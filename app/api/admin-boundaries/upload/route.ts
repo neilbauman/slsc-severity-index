@@ -18,10 +18,8 @@ export async function POST(request: Request) {
 
     const formData = await request.formData()
     const countryId = formData.get('countryId') as string
-    const level = parseInt(formData.get('level') as string)
-    const nameField = formData.get('nameField') as string
-    const pcodeField = formData.get('pcodeField') as string
-    const parentField = (formData.get('parentField') as string) || null
+    const processAllLevels = formData.get('processAllLevels') === 'true'
+    const autoDetect = formData.get('autoDetect') === 'true'
     const simplifyTolerance = parseFloat(formData.get('simplifyTolerance') as string) || 0.0001
     const hdxUrl = formData.get('hdxUrl') as string | null
     const file = formData.get('file') as File | null
@@ -47,72 +45,113 @@ export async function POST(request: Request) {
     // Simplify geometries
     const simplified = simplify(geojson, { tolerance: simplifyTolerance, highQuality: true })
 
-    // Process features
-    const boundaries: any[] = []
-    const parentMap = new Map<string, string>()
+    // Detect available admin levels from the first feature
+    const firstFeature = simplified.features[0]
+    const properties = firstFeature?.properties || {}
+    
+    // Find all ADM level fields (ADM0_EN, ADM1_EN, ADM2_EN, etc.)
+    const detectedLevels = new Map<number, { nameField: string; pcodeField: string }>()
+    
+    if (autoDetect && processAllLevels) {
+      // Auto-detect ADM fields
+      for (let level = 0; level <= 6; level++) {
+        const nameField = `ADM${level}_EN`
+        const pcodeField = `ADM${level}_PCODE`
+        
+        if (properties[nameField] || properties[pcodeField]) {
+          detectedLevels.set(level, { nameField, pcodeField })
+        }
+      }
+    } else {
+      // Single level processing (legacy mode)
+      // This would require the old form fields
+      throw new Error('Please use "Process all admin levels" mode')
+    }
 
-    // First pass: create boundaries and map parent relationships
-    for (const feature of simplified.features) {
-      const name = feature.properties?.[nameField] || feature.properties?.name || 'Unknown'
-      const pcode = feature.properties?.[pcodeField] || feature.properties?.pcode || null
-      const parentPcode = parentField ? feature.properties?.[parentField] : null
+    if (detectedLevels.size === 0) {
+      return NextResponse.json(
+        { error: 'No admin level fields detected. Ensure your file has ADM0_EN, ADM1_EN, etc. fields.' },
+        { status: 400 }
+      )
+    }
 
-      if (!name) continue
+    // Process each level
+    const summary: Record<number, number> = {}
+    const allBoundariesByLevel = new Map<number, any[]>()
+    const pcodeToIdMap = new Map<string, { level: number; id: string }>()
 
-      // Convert GeoJSON to PostGIS format (Well-Known Text)
-      const geom = feature.geometry
-      if (!geom || (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon')) {
-        continue
+    // Sort levels to process from highest (Adm0) to lowest
+    const sortedLevels = Array.from(detectedLevels.keys()).sort((a, b) => a - b)
+
+    for (const level of sortedLevels) {
+      const { nameField, pcodeField } = detectedLevels.get(level)!
+      const boundaries: any[] = []
+      const parentLevel = level > 0 ? level - 1 : null
+
+      for (const feature of simplified.features) {
+        const name = feature.properties?.[nameField] || feature.properties?.[`ADM${level}_EN`] || null
+        const pcode = feature.properties?.[pcodeField] || feature.properties?.[`ADM${level}_PCODE`] || null
+
+        if (!name) continue
+
+        const geom = feature.geometry
+        if (!geom || (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon')) {
+          continue
+        }
+
+        // Find parent Pcode
+        const parentPcode = parentLevel !== null
+          ? (feature.properties?.[`ADM${parentLevel}_PCODE`] || null)
+          : null
+
+        boundaries.push({
+          level,
+          name,
+          pcode,
+          parentPcode,
+          geometry: JSON.stringify(geom),
+        })
       }
 
-      boundaries.push({
-        name,
-        pcode,
-        parentPcode,
-        geometry: JSON.stringify(geom),
-      })
+      allBoundariesByLevel.set(level, boundaries)
     }
 
-    // Get parent IDs for hierarchy
-    if (parentField && level > 0) {
-      const { data: parentBoundaries } = await supabase
-        .from('admin_boundaries')
-        .select('id, pcode')
-        .eq('country_id', countryId)
-        .eq('level', level - 1)
+    // Insert boundaries level by level, building hierarchy
+    for (const level of sortedLevels) {
+      const boundaries = allBoundariesByLevel.get(level) || []
+      let insertedCount = 0
 
-      const parentIdMap = new Map<string, string>()
-      parentBoundaries?.forEach((p) => {
-        if (p.pcode) {
-          parentIdMap.set(p.pcode, p.id)
+      for (const boundary of boundaries) {
+        // Find parent ID if parent level exists
+        let parentId = null
+        if (boundary.parentPcode && level > 0) {
+          const parentMapping = pcodeToIdMap.get(`${level - 1}:${boundary.parentPcode}`)
+          if (parentMapping) {
+            parentId = parentMapping.id
+          }
         }
-      })
 
-      boundaries.forEach((b) => {
-        if (b.parentPcode && parentIdMap.has(b.parentPcode)) {
-          b.parent_id = parentIdMap.get(b.parentPcode)
+        const { data: insertedId, error } = await supabase.rpc('insert_admin_boundary', {
+          p_country_id: countryId,
+          p_level: boundary.level,
+          p_name: boundary.name,
+          p_pcode: boundary.pcode,
+          p_parent_id: parentId,
+          p_geometry: boundary.geometry,
+        })
+
+        if (!error && insertedId) {
+          insertedCount++
+          if (boundary.pcode) {
+            pcodeToIdMap.set(`${level}:${boundary.pcode}`, { level, id: insertedId })
+          }
         }
-      })
-    }
-
-    // Insert into database using PostGIS function
-    let insertedCount = 0
-    for (const boundary of boundaries) {
-      const { error } = await supabase.rpc('insert_admin_boundary', {
-        p_country_id: countryId,
-        p_level: level,
-        p_name: boundary.name,
-        p_pcode: boundary.pcode,
-        p_parent_id: boundary.parent_id || null,
-        p_geometry: boundary.geometry,
-      })
-
-      if (!error) {
-        insertedCount++
       }
+
+      summary[level] = insertedCount
     }
 
-    return NextResponse.json({ count: insertedCount, success: true })
+    return NextResponse.json({ summary, success: true })
   } catch (error: any) {
     console.error('Upload error:', error)
     return NextResponse.json(

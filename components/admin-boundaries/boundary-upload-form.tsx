@@ -15,14 +15,12 @@ interface BoundaryUploadFormProps {
 
 export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryUploadFormProps) {
   const router = useRouter()
-  const [uploadMethod, setUploadMethod] = useState<'hdx' | 'file'>('hdx')
+  const [uploadMethod, setUploadMethod] = useState<'hdx' | 'file'>('file')
   const [hdxUrl, setHdxUrl] = useState('https://data.humdata.org/dataset/cod-ab-phl')
   const [file, setFile] = useState<File | null>(null)
-  const [level, setLevel] = useState<number>(1)
-  const [nameField, setNameField] = useState('ADM1_EN')
-  const [pcodeField, setPcodeField] = useState('ADM1_PCODE')
-  const [parentField, setParentField] = useState('')
+  const [processAllLevels, setProcessAllLevels] = useState(true)
   const [simplifyTolerance, setSimplifyTolerance] = useState(0.0001)
+  const [autoDetect, setAutoDetect] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<string>('')
@@ -49,9 +47,8 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
     try {
       const formData = new FormData()
       formData.append('countryId', countryId)
-      formData.append('level', level.toString())
-      formData.append('nameField', nameField)
-      formData.append('pcodeField', pcodeField)
+      formData.append('processAllLevels', processAllLevels.toString())
+      formData.append('autoDetect', autoDetect.toString())
       formData.append('simplifyTolerance', simplifyTolerance.toString())
       
       if (uploadMethod === 'hdx') {
@@ -59,11 +56,7 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
         setProgress('Fetching data from HDX...')
       } else {
         formData.append('file', file!)
-        setProgress('Uploading file...')
-      }
-
-      if (parentField) {
-        formData.append('parentField', parentField)
+        setProgress('Processing COD file and detecting all admin levels...')
       }
 
       const response = await fetch('/api/admin-boundaries/upload', {
@@ -77,7 +70,9 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
         throw new Error(data.error || 'Upload failed')
       }
 
-      setProgress(`Successfully imported ${data.count} boundaries!`)
+      const summary = data.summary || {}
+      const totalCount = Object.values(summary).reduce((sum: number, count: any) => sum + count, 0)
+      setProgress(`Successfully imported ${totalCount} boundaries across ${Object.keys(summary).length} admin levels!`)
       setTimeout(() => {
         router.push(`/countries/${countryCode}/admin-boundaries`)
         router.refresh()
@@ -154,66 +149,40 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
 
       <Card>
         <CardHeader>
-          <CardTitle>Configuration</CardTitle>
+          <CardTitle>Processing Options</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Administrative Level
-            </label>
-            <select
-              value={level}
-              onChange={(e) => setLevel(Number(e.target.value))}
-              className="w-full h-8 px-2 text-xs border border-gray-300 rounded"
-            >
-              {adminLevels.map((levelConfig: any) => (
-                <option key={levelConfig.level} value={levelConfig.level}>
-                  Adm{levelConfig.level} - {levelConfig.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Name Field
-              </label>
-              <Input
-                value={nameField}
-                onChange={(e) => setNameField(e.target.value)}
-                placeholder="ADM1_EN"
-                size="sm"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Pcode Field
-              </label>
-              <Input
-                value={pcodeField}
-                onChange={(e) => setPcodeField(e.target.value)}
-                placeholder="ADM1_PCODE"
-                size="sm"
-                required
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Parent Field (optional)
-            </label>
-            <Input
-              value={parentField}
-              onChange={(e) => setParentField(e.target.value)}
-              placeholder="ADM0_PCODE"
-              size="sm"
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="processAllLevels"
+              checked={processAllLevels}
+              onChange={(e) => setProcessAllLevels(e.target.checked)}
+              className="h-4 w-4"
             />
-            <p className="text-xs text-gray-500 mt-1">
-              Field that contains the parent boundary Pcode for hierarchy
-            </p>
+            <label htmlFor="processAllLevels" className="text-xs text-gray-700">
+              Process all admin levels from COD file (recommended)
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="autoDetect"
+              checked={autoDetect}
+              onChange={(e) => setAutoDetect(e.target.checked)}
+              className="h-4 w-4"
+              disabled={!processAllLevels}
+            />
+            <label htmlFor="autoDetect" className="text-xs text-gray-700">
+              Auto-detect field names (ADM0_EN, ADM1_EN, etc.)
+            </label>
+          </div>
+
+          <div className="bg-blue-50 p-3 rounded text-xs text-gray-700">
+            <strong>How it works:</strong> The system will automatically detect all admin levels
+            in your COD file (Adm0, Adm1, Adm2, etc.) and import them all at once, automatically
+            building the parent-child hierarchy.
           </div>
 
           <div>
