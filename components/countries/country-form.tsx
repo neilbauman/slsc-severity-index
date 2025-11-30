@@ -27,7 +27,13 @@ export function CountryForm() {
   }
 
   const removeAdminLevel = (index: number) => {
-    setAdminLevels(adminLevels.filter((_, i) => i !== index))
+    const updated = adminLevels.filter((_, i) => i !== index)
+    // Renumber levels after removal
+    const renumbered = updated.map((level, i) => ({
+      ...level,
+      level: i,
+    }))
+    setAdminLevels(renumbered)
   }
 
   const updateAdminLevel = (
@@ -66,8 +72,8 @@ export function CountryForm() {
       return
     }
 
-    if (adminLevels.some((level) => !level.name || !level.pcodePattern)) {
-      setError('All admin levels must have a name and Pcode pattern')
+    if (adminLevels.some((level) => !level.name)) {
+      setError('All admin levels must have a name')
       return
     }
 
@@ -196,7 +202,7 @@ export function CountryForm() {
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-medium text-gray-700">
-                  Level {level.level}
+                  Adm{level.level} {level.level === 0 && '(Country)'}
                 </span>
                 {adminLevels.length > 1 && (
                   <Button
@@ -225,17 +231,21 @@ export function CountryForm() {
               </div>
               <div>
                 <label className="block text-xs text-gray-600 mb-1">
-                  Pcode Pattern (Regex)
+                  Pcode Pattern
+                  <span className="text-gray-400 ml-1">(optional, for validation)</span>
                 </label>
                 <Input
                   value={level.pcodePattern}
                   onChange={(e) =>
                     updateAdminLevel(index, 'pcodePattern', e.target.value)
                   }
-                  placeholder="e.g., ^[0-9]{2}$"
+                  placeholder="e.g., ^[0-9]{2}$ or leave empty"
                   size="sm"
-                  required
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Examples: <code className="bg-gray-100 px-1">^[0-9]{2}$</code> (2 digits),{' '}
+                  <code className="bg-gray-100 px-1">^PHL$</code> (exact match), or leave empty
+                </p>
               </div>
             </div>
           ))}

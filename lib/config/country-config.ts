@@ -22,13 +22,15 @@ export type AdminLevel = z.infer<typeof AdminLevelSchema>
 export type CountryConfig = z.infer<typeof CountryConfigSchema>
 
 // Example Philippines configuration
+// Adm0 = Country, Adm1 = Region, Adm2 = Province, Adm3 = City/Municipality, Adm4 = Barangay
 export const PHILIPPINES_CONFIG: CountryConfig = {
   countryCode: 'PHL',
   adminLevels: [
-    { level: 0, name: 'Region', pcodePattern: '^[0-9]{2}$' },
-    { level: 1, name: 'Province', pcodePattern: '^[0-9]{2}[0-9]{2}$' },
-    { level: 2, name: 'City/Municipality', pcodePattern: '^[0-9]{4}[0-9]{3}$' },
-    { level: 3, name: 'Barangay', pcodePattern: '^[0-9]{7}[0-9]{3}$' },
+    { level: 0, name: 'Country', pcodePattern: '^PHL$' },
+    { level: 1, name: 'Region', pcodePattern: '^[0-9]{2}$' },
+    { level: 2, name: 'Province', pcodePattern: '^[0-9]{2}[0-9]{2}$' },
+    { level: 3, name: 'City/Municipality', pcodePattern: '^[0-9]{4}[0-9]{3}$' },
+    { level: 4, name: 'Barangay', pcodePattern: '^[0-9]{7}[0-9]{3}$' },
   ],
   calculationModel: 'philippines-ssc-v1',
 }
