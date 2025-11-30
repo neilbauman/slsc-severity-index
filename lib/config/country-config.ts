@@ -12,7 +12,7 @@ export const CountryConfigSchema = z.object({
   datasetTypes: z.array(z.object({
     id: z.string(),
     name: z.string(),
-    schemaDefinition: z.record(z.any()).optional(),
+    schemaDefinition: z.record(z.string(), z.any()).optional(),
     badgeColor: z.string().optional(),
   })).optional(),
   calculationModel: z.string().optional(),

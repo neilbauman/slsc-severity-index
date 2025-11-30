@@ -82,8 +82,10 @@ export default async function BaselineDatasetsPage({
                       <TableCell>
                         {dataset.dataset_types?.name ? (
                           <Badge
+                            variant="custom"
                             style={{
                               backgroundColor: dataset.dataset_types.badge_color || '#gray',
+                              color: '#fff',
                             }}
                           >
                             {dataset.dataset_types.name}

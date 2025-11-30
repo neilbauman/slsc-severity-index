@@ -11,14 +11,16 @@ export type BadgeVariant =
   | 'status-error'
   | 'status-info'
   | 'secondary'
+  | 'custom'
 
 interface BadgeProps {
   children: React.ReactNode
   variant?: BadgeVariant
   className?: string
+  style?: React.CSSProperties
 }
 
-const variantStyles: Record<BadgeVariant, string> = {
+const variantStyles: Record<Exclude<BadgeVariant, 'custom'>, string> = {
   default: 'bg-gray-200 text-gray-800',
   'severity-critical': 'bg-red-600 text-white',
   'severity-severe': 'bg-orange-600 text-white',
@@ -31,14 +33,15 @@ const variantStyles: Record<BadgeVariant, string> = {
   secondary: 'bg-gray-100 text-gray-700',
 }
 
-export function Badge({ children, variant = 'default', className }: BadgeProps) {
+export function Badge({ children, variant = 'default', className, style }: BadgeProps) {
   return (
     <span
       className={cn(
         'inline-flex items-center px-1.5 py-0.5 text-[11px] font-medium rounded',
-        variantStyles[variant],
+        variant === 'custom' ? '' : variantStyles[variant],
         className
       )}
+      style={variant === 'custom' ? style : undefined}
     >
       {children}
     </span>
