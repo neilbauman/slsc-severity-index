@@ -53,7 +53,9 @@ export default async function AdminBoundariesPage({
               Admin Boundaries
             </h1>
             {user && (
-              <Button size="sm">Upload Boundaries</Button>
+              <Link href={`/countries/${code}/admin-boundaries/upload`}>
+                <Button size="sm">Upload Boundaries</Button>
+              </Link>
             )}
           </div>
         </div>
@@ -102,7 +104,9 @@ export default async function AdminBoundariesPage({
                   No administrative boundaries uploaded yet
                 </p>
                 {user && (
-                  <Button size="sm">Upload Boundaries</Button>
+                  <Link href={`/countries/${code}/admin-boundaries/upload`}>
+                    <Button size="sm">Upload Boundaries</Button>
+                  </Link>
                 )}
               </div>
             )}
