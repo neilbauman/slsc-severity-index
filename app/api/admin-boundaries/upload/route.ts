@@ -110,7 +110,7 @@ export async function POST(request: Request) {
           name,
           pcode,
           parentPcode,
-          geometry: JSON.stringify(geom),
+          geometry: geom, // Pass as object, not stringified
         })
       }
 
@@ -121,6 +121,7 @@ export async function POST(request: Request) {
     for (const level of sortedLevels) {
       const boundaries = allBoundariesByLevel.get(level) || []
       let insertedCount = 0
+      const errors: string[] = []
 
       for (const boundary of boundaries) {
         // Find parent ID if parent level exists
@@ -132,21 +133,47 @@ export async function POST(request: Request) {
           }
         }
 
+        // Validate geometry before sending
+        if (!boundary.geometry || typeof boundary.geometry !== 'object') {
+          errors.push(`${boundary.name}: Invalid geometry`)
+          continue
+        }
+
+        const geom = boundary.geometry as any
+        if (!geom.type || (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon')) {
+          errors.push(`${boundary.name}: Geometry must be Polygon or MultiPolygon, got ${geom.type}`)
+          continue
+        }
+
         const { data: insertedId, error } = await supabase.rpc('insert_admin_boundary', {
           p_country_id: countryId,
           p_level: boundary.level,
           p_name: boundary.name,
-          p_pcode: boundary.pcode,
+          p_pcode: boundary.pcode || null,
           p_parent_id: parentId,
-          p_geometry: boundary.geometry,
+          p_geometry: geom as any, // Pass as JSONB object
         })
-
-        if (!error && insertedId) {
+        
+        if (error) {
+          const errorMsg = `${boundary.name}: ${error.message}`
+          errors.push(errorMsg)
+          console.error(`Error inserting boundary ${boundary.name}:`, error)
+        } else if (insertedId) {
           insertedCount++
           if (boundary.pcode) {
             pcodeToIdMap.set(`${level}:${boundary.pcode}`, { level, id: insertedId })
           }
+        } else {
+          errors.push(`${boundary.name}: Failed to insert (returned null)`)
         }
+      }
+      
+      if (errors.length > 0 && insertedCount === 0) {
+        // If all failed, throw error with details
+        throw new Error(`Failed to insert boundaries. First error: ${errors[0]}`)
+      } else if (errors.length > 0) {
+        // Log warnings but continue
+        console.warn(`Some boundaries failed to insert: ${errors.slice(0, 5).join('; ')}`)
       }
 
       summary[level] = insertedCount
