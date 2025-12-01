@@ -266,15 +266,39 @@ export async function POST(request: Request) {
       let featuresWithName = 0
       let featuresWithPcode = 0
       const sampleValues: string[] = []
+      const allPropertyKeys = new Set<string>()
       
-      for (let i = 0; i < Math.min(10, simplified.features.length); i++) {
+      // Check ALL features, not just first 10
+      for (let i = 0; i < simplified.features.length; i++) {
         const feature = simplified.features[i]
-        const nameValue = feature?.properties?.[nameField]
-        const pcodeValue = feature?.properties?.[pcodeField]
+        const props = feature?.properties || {}
+        
+        // Collect all property keys
+        Object.keys(props).forEach(k => allPropertyKeys.add(k))
+        
+        // Check exact match first
+        let nameValue = props[nameField]
+        let pcodeValue = props[pcodeField]
+        
+        // If not found, try case-insensitive match
+        if (nameValue === undefined || nameValue === null) {
+          const matchingKey = Object.keys(props).find(k => k.toLowerCase() === nameField.toLowerCase())
+          if (matchingKey) {
+            nameValue = props[matchingKey]
+            console.log(`Level ${level} feature ${i}: Found case-insensitive match for "${nameField}": "${matchingKey}"`)
+          }
+        }
+        
+        if (pcodeValue === undefined || pcodeValue === null) {
+          const matchingKey = Object.keys(props).find(k => k.toLowerCase() === pcodeField.toLowerCase())
+          if (matchingKey) {
+            pcodeValue = props[matchingKey]
+          }
+        }
         
         if (nameValue !== undefined && nameValue !== null && String(nameValue).trim() !== '') {
           featuresWithName++
-          if (sampleValues.length < 3) {
+          if (sampleValues.length < 5) {
             sampleValues.push(String(nameValue).trim())
           }
         }
@@ -283,9 +307,21 @@ export async function POST(request: Request) {
         }
       }
       
-      console.log(`Level ${level} field check: ${featuresWithName}/${Math.min(10, simplified.features.length)} features have non-empty "${nameField}", ${featuresWithPcode} have "${pcodeField}"`)
+      console.log(`Level ${level} field check: ${featuresWithName}/${simplified.features.length} features have non-empty "${nameField}", ${featuresWithPcode} have "${pcodeField}"`)
+      console.log(`Level ${level} all property keys found:`, Array.from(allPropertyKeys).slice(0, 20).join(', '))
       if (sampleValues.length > 0) {
-        console.log(`Level ${level} sample names:`, sampleValues)
+        console.log(`Level ${level} sample names found:`, sampleValues)
+      } else {
+        console.log(`Level ${level} WARNING: No features with non-empty "${nameField}" found!`)
+        // Show what the first feature actually has
+        if (simplified.features.length > 0) {
+          const firstFeature = simplified.features[0]
+          console.log(`Level ${level} First feature properties:`, JSON.stringify(
+            Object.fromEntries(
+              Object.entries(firstFeature.properties || {}).slice(0, 10)
+            ), null, 2
+          ))
+        }
       }
       
       // Sample first few features to see what we're working with
@@ -293,6 +329,7 @@ export async function POST(request: Request) {
         const sampleFeature = simplified.features[0]
         console.log(`Sample feature properties for level ${level}:`, {
           nameFieldValue: sampleFeature.properties?.[nameField],
+          nameFieldValueCaseInsensitive: Object.keys(sampleFeature.properties || {}).find(k => k.toLowerCase() === nameField.toLowerCase()),
           pcodeFieldValue: sampleFeature.properties?.[pcodeField],
           allProperties: Object.keys(sampleFeature.properties || {}).slice(0, 15)
         })
