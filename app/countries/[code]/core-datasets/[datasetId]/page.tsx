@@ -246,6 +246,53 @@ export default function DatasetDetailPage() {
           </Card>
         </div>
 
+        {dataset.metadata && (dataset.metadata as any).columns && (
+          <Card className="mb-6 border-blue-200 bg-blue-50">
+            <CardHeader>
+              <CardTitle className="text-sm">Configuration</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xs space-y-1">
+                {(dataset.metadata as any).adminLevel !== null && (
+                  <p>
+                    <span className="font-medium">Admin Level:</span> ADM{(dataset.metadata as any).adminLevel}
+                  </p>
+                )}
+                {(dataset.metadata as any).columns?.pcode && (
+                  <p>
+                    <span className="font-medium">Pcode Column:</span> {(dataset.metadata as any).columns.pcode}
+                  </p>
+                )}
+                {(dataset.metadata as any).columns?.population && (
+                  <p>
+                    <span className="font-medium">Population Column:</span> {(dataset.metadata as any).columns.population}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {(!dataset.metadata || !(dataset.metadata as any).columns?.population) && (
+          <Card className="mb-6 border-yellow-200 bg-yellow-50">
+            <CardHeader>
+              <CardTitle className="text-sm">⚠️ Configuration Required</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-gray-700 mb-2">
+                This dataset needs to be configured before processing. Please specify the admin level and map the pcode/population columns.
+              </p>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => router.push(`/countries/${code}/core-datasets/${datasetId}/configure`)}
+              >
+                Configure Now
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {previewData && (
           <Card className="mb-6">
             <CardHeader>
