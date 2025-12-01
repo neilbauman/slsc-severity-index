@@ -285,7 +285,7 @@ export async function analyzeDatasetQuality(
               pcode: row[pcodeField],
               name: nameField ? row[nameField] : undefined,
             })),
-            recommendation: 'Review pcodes that don't match administrative boundaries. They may need correction or the boundaries may need to be updated.',
+            recommendation: "Review pcodes that don't match administrative boundaries. They may need correction or the boundaries may need to be updated.",
             autoFixable: false,
           })
           recommendations.push(`Review ${unmatchedPcodes.length} unmatched pcodes`)
