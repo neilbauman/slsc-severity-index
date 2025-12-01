@@ -461,6 +461,11 @@ export async function POST(request: Request) {
           skippedInvalidGeometry++
           if (skippedInvalidGeometry <= 3) {
             console.log(`Skipping feature "${name}" at level ${level}: Invalid geometry type "${geom.type}". Expected Polygon or MultiPolygon.`)
+            if (geom.type === 'Point') {
+              console.log(`  NOTE: This feature has Point geometry. Admin boundaries require Polygon/MultiPolygon geometries.`)
+              console.log(`  The file appears to contain centroids (points) rather than actual boundary polygons.`)
+              console.log(`  You may need a different file with polygon geometries.`)
+            }
           }
           continue
         }
@@ -762,9 +767,30 @@ export async function POST(request: Request) {
         }
       }
       
+      // Create a more helpful error message based on what we know
+      let errorMessage = `No boundaries were inserted. Processed ${totalProcessed} boundaries across ${detectedLevels.size} admin levels, but none were inserted.`
+      
+      // Check if all features were skipped due to geometry issues
+      const geometryTypeEntries = Array.from(allGeometryTypes.entries())
+      if (geometryTypeEntries.length > 0) {
+        const geometryTypeInfo = geometryTypeEntries.map(([type, count]) => `${type}: ${count}`).join(', ')
+        errorMessage += `\n\nGeometry types found in file: ${geometryTypeInfo}`
+        
+        // Check if we have Point geometries
+        const pointCount = allGeometryTypes.get('Point') || 0
+        if (pointCount > 0) {
+          errorMessage += `\n\n⚠️ WARNING: Your file contains ${pointCount} Point geometries. Admin boundaries require Polygon or MultiPolygon geometries (actual boundary shapes), not Point geometries (centroids).`
+          errorMessage += `\n\nPlease use a file that contains polygon boundaries, not point locations.`
+        } else if (totalProcessed === 0 && skippedInvalidGeometry > 0) {
+          errorMessage += `\n\nAll ${skippedInvalidGeometry} features were skipped due to invalid geometry types. Expected Polygon or MultiPolygon.`
+        }
+      }
+      
+      errorMessage += `\n\nThis may also be due to database errors or RLS policy restrictions. Check server logs for detailed error messages.`
+      
       return NextResponse.json(
         { 
-          error: `No boundaries were inserted. Processed ${totalProcessed} boundaries across ${detectedLevels.size} admin levels, but none were inserted. This may be due to database errors, invalid geometries, or RLS policy restrictions. Check server logs for detailed error messages.`,
+          error: errorMessage,
           summary,
           debug: {
             totalProcessed,
