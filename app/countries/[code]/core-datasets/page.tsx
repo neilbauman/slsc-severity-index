@@ -49,7 +49,9 @@ export default async function CoreDatasetsPage({
               Core Datasets
             </h1>
             {user && (
-              <Button size="sm">Upload Dataset</Button>
+              <Link href={`/countries/${code}/core-datasets/upload`}>
+                <Button size="sm">Upload Dataset</Button>
+              </Link>
             )}
           </div>
         </div>
@@ -66,7 +68,9 @@ export default async function CoreDatasetsPage({
                 Upload population datasets (CSV, Excel, GeoJSON) with Pcode matching
               </p>
               {user && (
-                <Button size="sm">Upload Population Data</Button>
+                <Link href={`/countries/${code}/core-datasets/upload`}>
+                  <Button size="sm">Upload Population Data</Button>
+                </Link>
               )}
             </CardContent>
           </Card>
@@ -85,6 +89,7 @@ export default async function CoreDatasetsPage({
                       <TableHead>Status</TableHead>
                       <TableHead>Version</TableHead>
                       <TableHead>Uploaded</TableHead>
+                      {user && <TableHead>Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -112,6 +117,13 @@ export default async function CoreDatasetsPage({
                         </TableCell>
                         <TableCell className="text-xs text-gray-600">
                           {new Date(dataset.uploaded_at).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          {user && (
+                            <Link href={`/countries/${code}/core-datasets/${dataset.id}/clean`}>
+                              <Button size="sm" variant="secondary">Clean</Button>
+                            </Link>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
