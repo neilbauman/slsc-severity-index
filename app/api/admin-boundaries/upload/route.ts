@@ -85,7 +85,16 @@ export async function POST(request: Request) {
           `ADM${level}_FR`,      // French: ADM0_FR, ADM1_FR
           `adm${level}_en`,      // Lowercase: adm0_en, adm1_en
           `Adm${level}_En`,      // Mixed case: Adm0_En, Adm1_En
-        ]
+          // Mozambique pattern: name, name1, name2, name3
+          level === 0 ? 'name' : null,
+          level === 1 ? 'name1' : null,
+          level === 2 ? 'name2' : null,
+          level === 3 ? 'name3' : null,
+          // ADM4 pattern: adm4_name (primary), adm4_name1, adm4_name2 (alternatives)
+          level === 4 ? 'adm4_name' : null,
+          level === 4 ? 'adm4_name1' : null,
+          level === 4 ? 'adm4_name2' : null,
+        ].filter(Boolean) as string[]
         
         const pcodePatterns = [
           `ADM${level}_PCODE`,   // Standard: ADM0_PCODE, ADM1_PCODE
@@ -93,6 +102,7 @@ export async function POST(request: Request) {
           `PCODE${level}`,       // Alternative: PCODE0, PCODE1
           `pcode${level}`,       // Lowercase
           `ADM${level}_CODE`,    // Alternative: ADM0_CODE
+          // Mozambique might not have pcode fields, so we'll make it optional
         ]
         
         // Find matching name field
@@ -113,11 +123,29 @@ export async function POST(request: Request) {
           }
         }
         
+        // For Mozambique pattern, also check for pcode variants
+        if (nameField && !pcodeField) {
+          // Try common pcode patterns that might match Mozambique format
+          const mozPcodePatterns = [
+            `pcode${level}`,
+            `pcode_${level}`,
+            `code${level}`,
+            `code_${level}`,
+            `ADM${level}_PCODE`,
+          ]
+          for (const pattern of mozPcodePatterns) {
+            if (properties[pattern] !== undefined && properties[pattern] !== null && properties[pattern] !== '') {
+              pcodeField = pattern
+              break
+            }
+          }
+        }
+        
         // If we found a name field, add this level
         if (nameField) {
           detectedLevels.set(level, { 
             nameField, 
-            pcodeField: pcodeField || `ADM${level}_PCODE` // Fallback to standard name if not found
+            pcodeField: pcodeField || `ADM${level}_PCODE` // Fallback to standard name if not found (will be null if no pcode)
           })
         }
       }
