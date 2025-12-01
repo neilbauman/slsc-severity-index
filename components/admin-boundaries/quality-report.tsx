@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 
 interface QualityIssue {
   severity: 'error' | 'warning' | 'info'
@@ -41,9 +42,11 @@ interface QualityReport {
 
 interface QualityReportProps {
   report: QualityReport | null
+  onCleanAction?: (action: string, issueType: string, affectedItems: QualityIssue['affectedItems']) => void
+  cleaning?: boolean
 }
 
-export function QualityReport({ report }: QualityReportProps) {
+export function QualityReport({ report, onCleanAction, cleaning = false }: QualityReportProps) {
   if (!report) {
     return null
   }
@@ -158,6 +161,55 @@ export function QualityReport({ report }: QualityReportProps) {
                         )}
                       </div>
                       <p className="text-sm mb-3">{issue.recommendation}</p>
+                      
+                      {/* Cleaning Action Buttons */}
+                      {onCleanAction && (
+                        <div className="mb-3 flex gap-2">
+                          {issue.type === 'duplicate_name' && issue.autoFixable && (
+                            <Button
+                              size="sm"
+                              onClick={() => onCleanAction('delete_duplicates', issue.type, issue.affectedItems)}
+                              disabled={cleaning}
+                              className="text-xs"
+                            >
+                              {cleaning ? 'Cleaning...' : 'Merge Duplicates'}
+                            </Button>
+                          )}
+                          {issue.type === 'missing_geometry' && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => onCleanAction('delete_invalid', issue.type, issue.affectedItems)}
+                              disabled={cleaning}
+                              className="text-xs"
+                            >
+                              {cleaning ? 'Deleting...' : 'Delete Invalid'}
+                            </Button>
+                          )}
+                          {issue.type === 'invalid_parent_level' && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => onCleanAction('delete_invalid', issue.type, issue.affectedItems)}
+                              disabled={cleaning}
+                              className="text-xs"
+                            >
+                              {cleaning ? 'Deleting...' : 'Delete Invalid'}
+                            </Button>
+                          )}
+                          {issue.type === 'duplicate_pcode' && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => onCleanAction('delete_duplicates', issue.type, issue.affectedItems)}
+                              disabled={cleaning}
+                              className="text-xs"
+                            >
+                              {cleaning ? 'Cleaning...' : 'Review Duplicates'}
+                            </Button>
+                          )}
+                        </div>
+                      )}
                       
                       {issue.affectedItems.length > 0 && (
                         <details className="mt-2">

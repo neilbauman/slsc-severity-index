@@ -53,9 +53,14 @@ export default async function AdminBoundariesPage({
               Admin Boundaries
             </h1>
             {user && (
-              <Link href={`/countries/${code}/admin-boundaries/upload`}>
-                <Button size="sm">Upload Boundaries</Button>
-              </Link>
+              <div className="flex gap-2">
+                <Link href={`/countries/${code}/admin-boundaries/clean`}>
+                  <Button size="sm" variant="secondary">Data Quality</Button>
+                </Link>
+                <Link href={`/countries/${code}/admin-boundaries/upload`}>
+                  <Button size="sm">Upload Boundaries</Button>
+                </Link>
+              </div>
             )}
           </div>
         </div>
