@@ -61,9 +61,13 @@ export async function POST(request: Request) {
     const firstFeature = simplified.features[0]
     const properties = firstFeature?.properties || {}
     
-    // Log available properties for debugging
+    // Log available properties for debugging (this will show in Vercel logs)
     const propertyKeys = Object.keys(properties)
-    console.log('Available properties in file:', propertyKeys.slice(0, 20).join(', '), propertyKeys.length > 20 ? '...' : '')
+    console.log('=== FILE PROPERTIES DEBUG ===')
+    console.log('Total properties:', propertyKeys.length)
+    console.log('All properties:', JSON.stringify(propertyKeys, null, 2))
+    console.log('Sample feature properties:', JSON.stringify(properties, null, 2))
+    console.log('============================')
     
     // Find all ADM level fields with flexible naming patterns
     const detectedLevels = new Map<number, { nameField: string; pcodeField: string }>()
