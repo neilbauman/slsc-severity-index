@@ -371,10 +371,13 @@ export async function POST(request: Request) {
       
       if (errors.length > 0 && insertedCount === 0) {
         // If all failed, throw error with details
-        throw new Error(`Failed to insert boundaries. First error: ${errors[0]}`)
+        console.error(`Level ${level}: All ${boundaries.length} boundaries failed to insert. Errors:`, errors.slice(0, 10))
+        throw new Error(`Failed to insert boundaries at level ${level}. First error: ${errors[0]}. Total errors: ${errors.length}`)
       } else if (errors.length > 0) {
         // Log warnings but continue
-        console.warn(`Some boundaries failed to insert: ${errors.slice(0, 5).join('; ')}`)
+        console.warn(`Level ${level}: ${insertedCount} inserted, ${errors.length} failed. Sample errors: ${errors.slice(0, 3).join('; ')}`)
+      } else if (insertedCount > 0) {
+        console.log(`Level ${level}: Successfully inserted ${insertedCount} boundaries`)
       }
 
       summary[level] = insertedCount
@@ -414,10 +417,38 @@ export async function POST(request: Request) {
       }
     }
 
+    // Check if any boundaries were actually inserted
+    const totalInserted = Object.values(summary).reduce((sum: number, count: any) => sum + count, 0)
+    
+    if (totalInserted === 0) {
+      console.error('No boundaries were inserted. Summary:', summary)
+      return NextResponse.json(
+        { 
+          error: 'No boundaries were inserted. This may be due to database errors, invalid geometries, or missing required fields. Check server logs for details.',
+          summary,
+          debug: {
+            detectedLevels: Array.from(detectedLevels.entries()).map(([level, fields]) => ({
+              level,
+              nameField: fields.nameField,
+              pcodeField: fields.pcodeField
+            })),
+            boundariesByLevel: Object.fromEntries(
+              Array.from(allBoundariesByLevel.entries()).map(([level, boundaries]) => [
+                level,
+                { count: boundaries.length, sampleNames: boundaries.slice(0, 3).map(b => b.name) }
+              ])
+            )
+          }
+        },
+        { status: 400 }
+      )
+    }
+
     return NextResponse.json({ 
       summary, 
       success: true,
-      patternsInferred: Array.from(inferredPatterns.entries())
+      patternsInferred: Array.from(inferredPatterns.entries()),
+      totalInserted
     })
   } catch (error: any) {
     console.error('Upload error:', error)
