@@ -22,6 +22,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Create service role client for inserts (bypasses RLS)
+    const { createClient: createSupabaseClient } = await import('@supabase/supabase-js')
+    const serviceRoleSupabase = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    )
+
     const formData = await request.formData()
     const countryId = formData.get('countryId') as string
     const processAllLevels = formData.get('processAllLevels') === 'true'
@@ -317,7 +330,8 @@ export async function POST(request: Request) {
         }
 
         try {
-          const { data: insertedId, error } = await supabase.rpc('insert_admin_boundary', {
+          // Use service role client to bypass RLS policies
+          const { data: insertedId, error } = await serviceRoleSupabase.rpc('insert_admin_boundary', {
             p_country_id: countryId,
             p_level: boundary.level,
             p_name: boundary.name,
@@ -330,7 +344,7 @@ export async function POST(request: Request) {
             // If error is about pattern mismatch, try inserting without pcode
             if (error.message?.toLowerCase().includes('pattern') && boundary.pcode) {
               console.warn(`Pcode "${boundary.pcode}" for "${boundary.name}" doesn't match pattern. Retrying without pcode...`)
-              const { data: retryId, error: retryError } = await supabase.rpc('insert_admin_boundary', {
+              const { data: retryId, error: retryError } = await serviceRoleSupabase.rpc('insert_admin_boundary', {
                 p_country_id: countryId,
                 p_level: boundary.level,
                 p_name: boundary.name,
