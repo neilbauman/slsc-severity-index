@@ -79,6 +79,25 @@ export async function POST(request: Request) {
     // Simplify geometries
     const simplified = simplify(geojson, { tolerance: simplifyTolerance, highQuality: true })
 
+    // Log geometry types immediately to diagnose issues
+    const geometryTypeCounts = new Map<string, number>()
+    for (const feature of simplified.features) {
+      const geomType = feature.geometry?.type || 'null'
+      geometryTypeCounts.set(geomType, (geometryTypeCounts.get(geomType) || 0) + 1)
+    }
+    console.log('=== GEOMETRY TYPES IN FILE ===')
+    console.log('Geometry type distribution:', Object.fromEntries(geometryTypeCounts.entries()))
+    console.log('Total features:', simplified.features.length)
+    if (simplified.features.length > 0) {
+      const firstFeat = simplified.features[0]
+      console.log('First feature geometry:', {
+        type: firstFeat.geometry?.type || 'null',
+        hasGeometry: !!firstFeat.geometry,
+        geometryKeys: firstFeat.geometry ? Object.keys(firstFeat.geometry) : []
+      })
+    }
+    console.log('=============================')
+
     // Detect available admin levels from the first feature
     const firstFeature = simplified.features[0]
     const properties = firstFeature?.properties || {}
