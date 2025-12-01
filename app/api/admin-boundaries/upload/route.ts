@@ -6,6 +6,7 @@ import * as shp from 'shapefile'
 import JSZip from 'jszip'
 import { inferPcodePatternsFromBoundaries } from '@/lib/processing/pcode-inference'
 import { validatePcode } from '@/lib/config/country-config'
+import { analyzeAdminBoundariesQuality } from '@/lib/processing/data-quality'
 
 // Increase body size limit for large file uploads (50MB)
 export const maxDuration = 300 // 5 minutes for processing large files
@@ -934,11 +935,23 @@ export async function POST(request: Request) {
       )
     }
 
+    // Run data quality analysis
+    let qualityReport = null
+    try {
+      console.log('Running data quality analysis...')
+      qualityReport = await analyzeAdminBoundariesQuality(serviceRoleSupabase, countryId)
+      console.log(`Quality score: ${qualityReport.overallScore}/100, ${qualityReport.issues.length} issues found`)
+    } catch (qualityError) {
+      console.error('Error running quality analysis:', qualityError)
+      // Don't fail the upload if quality analysis fails
+    }
+
     return NextResponse.json({ 
       summary, 
       success: true,
       patternsInferred: Array.from(inferredPatterns.entries()),
-      totalInserted
+      totalInserted,
+      qualityReport
     })
   } catch (error: any) {
     console.error('Upload error:', error)

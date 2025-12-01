@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase/client'
+import { QualityReport } from './quality-report'
 
 interface BoundaryUploadFormProps {
   countryId: string
@@ -26,6 +27,7 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<string>('')
+  const [qualityReport, setQualityReport] = useState<any>(null)
 
   const adminLevels = config?.adminLevels || []
 
@@ -145,6 +147,11 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
       }
       
       setProgress(`Successfully imported ${totalCount} boundaries across ${Object.keys(summary).length} admin levels!`)
+      
+      // Store quality report if available
+      if (data.qualityReport) {
+        setQualityReport(data.qualityReport)
+      }
       
       // Clean up: Delete the uploaded file from storage after processing
       if (filePath) {
@@ -349,6 +356,10 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
         <div className="text-xs text-blue-600 bg-blue-50 p-3 rounded">
           {progress}
         </div>
+      )}
+
+      {qualityReport && (
+        <QualityReport report={qualityReport} />
       )}
 
       <div className="flex gap-2">
