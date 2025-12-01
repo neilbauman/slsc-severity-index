@@ -160,10 +160,14 @@ export async function POST(request: Request) {
             }
           }
           
-          if (foundWithData >= 1) {
+          // Require at least 2 features with data to avoid false positives
+          // (unless there's only 1 feature total, which is rare)
+          if (foundWithData >= 2 || (foundWithData >= 1 && simplified.features.length === 1)) {
             nameField = pattern
             console.log(`Detected level ${level} name field: ${pattern} = "${firstNonEmptyValue}" (found in ${foundWithData} of ${Math.min(20, simplified.features.length)} checked features)`)
             break
+          } else if (foundWithData === 1) {
+            console.log(`Skipping pattern ${pattern} for level ${level}: only found in 1 feature, need at least 2`)
           }
         }
         
@@ -294,9 +298,23 @@ export async function POST(request: Request) {
         })
       }
 
+      let skippedNoName = 0
+      let skippedInvalidGeometry = 0
+      let processedCount = 0
+      
       for (const feature of simplified.features) {
-        // Get name using the detected field name
+        // Get name using the detected field name - try exact match first, then case-insensitive
         let name = feature.properties?.[nameField] || null
+        
+        // If not found, try case-insensitive match
+        if (name === null || name === undefined) {
+          const propKeys = Object.keys(feature.properties || {})
+          const matchingKey = propKeys.find(k => k.toLowerCase() === nameField.toLowerCase())
+          if (matchingKey) {
+            name = feature.properties?.[matchingKey] || null
+            console.log(`Level ${level}: Found case-insensitive match for "${nameField}": "${matchingKey}" = "${name}"`)
+          }
+        }
         
         // If name is empty string, null, or undefined, try to get it as string
         if (name !== null && name !== undefined) {
@@ -309,18 +327,27 @@ export async function POST(request: Request) {
         // Get pcode using the detected field name, or try fallback patterns
         let pcode = feature.properties?.[pcodeField] || null
         if (!pcode && pcodeField) {
+          // Try case-insensitive match first
+          const propKeys = Object.keys(feature.properties || {})
+          const matchingKey = propKeys.find(k => k.toLowerCase() === pcodeField.toLowerCase())
+          if (matchingKey) {
+            pcode = feature.properties?.[matchingKey] || null
+          }
+          
           // Try alternative pcode patterns if the detected one doesn't exist
-          const altPcodePatterns = [
-            `ADM${level}_PCODE`,
-            `ADM${level}_Pcode`,
-            `PCODE${level}`,
-            `pcode${level}`,
-            `ADM${level}_CODE`,
-          ]
-          for (const pattern of altPcodePatterns) {
-            if (feature.properties?.[pattern]) {
-              pcode = feature.properties[pattern]
-              break
+          if (!pcode) {
+            const altPcodePatterns = [
+              `ADM${level}_PCODE`,
+              `ADM${level}_Pcode`,
+              `PCODE${level}`,
+              `pcode${level}`,
+              `ADM${level}_CODE`,
+            ]
+            for (const pattern of altPcodePatterns) {
+              if (feature.properties?.[pattern]) {
+                pcode = feature.properties[pattern]
+                break
+              }
             }
           }
         }
@@ -334,9 +361,12 @@ export async function POST(request: Request) {
         }
 
         if (!name) {
+          skippedNoName++
           // Log why this feature was skipped (but only for first few to avoid spam)
-          if (boundaries.length < 3) {
-            console.log(`Skipping feature at level ${level}: name field "${nameField}" is empty or null. Sample properties:`, 
+          if (skippedNoName <= 3) {
+            const rawValue = feature.properties?.[nameField]
+            console.log(`Skipping feature at level ${level}: name field "${nameField}" is empty/null. Raw value:`, rawValue, 
+              `Type: ${typeof rawValue}. Sample properties:`, 
               Object.entries(feature.properties || {}).slice(0, 5).map(([k, v]) => `${k}=${v}`).join(', '))
           }
           continue
@@ -344,11 +374,14 @@ export async function POST(request: Request) {
 
         const geom = feature.geometry
         if (!geom || (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon')) {
-          if (boundaries.length < 3) {
+          skippedInvalidGeometry++
+          if (skippedInvalidGeometry <= 3) {
             console.log(`Skipping feature "${name}" at level ${level}: Invalid geometry type ${geom?.type || 'null'}`)
           }
           continue
         }
+        
+        processedCount++
 
         // Find parent Pcode using detected field names
         let parentPcode: string | null = null
@@ -399,8 +432,11 @@ export async function POST(request: Request) {
       }
 
       console.log(`Level ${level}: Extracted ${boundaries.length} boundaries from ${simplified.features.length} features`)
+      console.log(`Level ${level}: Skipped ${skippedNoName} features (no name), ${skippedInvalidGeometry} features (invalid geometry), ${processedCount} features processed`)
       if (boundaries.length > 0) {
         console.log(`Level ${level}: Sample boundaries:`, boundaries.slice(0, 3).map(b => b.name))
+      } else if (processedCount > 0) {
+        console.log(`Level ${level}: WARNING - ${processedCount} features were processed but ${boundaries.length} boundaries were created. This may indicate a parent lookup issue.`)
       }
       allBoundariesByLevel.set(level, boundaries)
     }
