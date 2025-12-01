@@ -88,7 +88,19 @@ export async function POST(request: Request) {
     console.log('=== FILE PROPERTIES DEBUG ===')
     console.log('Total properties:', propertyKeys.length)
     console.log('All properties:', JSON.stringify(propertyKeys, null, 2))
-    console.log('Sample feature properties:', JSON.stringify(properties, null, 2))
+    console.log('Sample feature properties (first 20):', JSON.stringify(
+      Object.fromEntries(Object.entries(properties).slice(0, 20)), 
+      null, 
+      2
+    ))
+    // Check specific Mozambique fields
+    console.log('Mozambique field values:', {
+      name: properties.name,
+      name1: properties.name1,
+      name2: properties.name2,
+      name3: properties.name3,
+      adm4_name: properties.adm4_name,
+    })
     console.log('============================')
     
     // Find all ADM level fields with flexible naming patterns
@@ -130,13 +142,27 @@ export async function POST(request: Request) {
         ]
         
         // Find matching name field
+        // Check multiple features to ensure the field actually has data
         let nameField: string | null = null
-        for (const pattern of namePatterns) {
-          const value = properties[pattern]
-          // Check if field exists and has a non-empty value
-          if (value !== undefined && value !== null && String(value).trim() !== '') {
+        for (const pattern of namePatterns.filter(p => p !== null)) {
+          // Check if ANY feature has this field with non-empty data
+          let foundWithData = 0
+          let firstNonEmptyValue: any = null
+          
+          for (let i = 0; i < Math.min(20, simplified.features.length); i++) {
+            const testValue = simplified.features[i]?.properties?.[pattern]
+            if (testValue !== undefined && testValue !== null && String(testValue).trim() !== '') {
+              foundWithData++
+              if (!firstNonEmptyValue) {
+                firstNonEmptyValue = testValue
+              }
+              if (foundWithData >= 3) break // Found at least 3 features with data
+            }
+          }
+          
+          if (foundWithData >= 1) {
             nameField = pattern
-            console.log(`Detected level ${level} name field: ${pattern} = "${value}"`)
+            console.log(`Detected level ${level} name field: ${pattern} = "${firstNonEmptyValue}" (found in ${foundWithData} of ${Math.min(20, simplified.features.length)} checked features)`)
             break
           }
         }
@@ -198,14 +224,6 @@ export async function POST(request: Request) {
     console.log('Detected admin levels:', Array.from(detectedLevels.entries()).map(([level, fields]) => 
       `Level ${level}: ${fields.nameField}${fields.pcodeField ? `, ${fields.pcodeField}` : ''}`
     ).join('; '))
-    
-    // Log total boundaries found
-    let totalBoundariesFound = 0
-    for (const [level, boundaries] of allBoundariesByLevel.entries()) {
-      totalBoundariesFound += boundaries.length
-      console.log(`Level ${level}: Found ${boundaries.length} boundaries`)
-    }
-    console.log(`Total boundaries to process: ${totalBoundariesFound}`)
 
     // Get current country config to check for existing pcode patterns
     const { data: country } = await supabase
@@ -237,9 +255,56 @@ export async function POST(request: Request) {
       const boundaries: any[] = []
       const parentLevel = level > 0 ? level - 1 : null
 
+      console.log(`Processing level ${level}: Looking for nameField="${nameField}", pcodeField="${pcodeField}"`)
+      console.log(`Total features in file: ${simplified.features.length}`)
+      
+      // Count how many features have non-empty values for this level
+      let featuresWithName = 0
+      let featuresWithPcode = 0
+      const sampleValues: string[] = []
+      
+      for (let i = 0; i < Math.min(10, simplified.features.length); i++) {
+        const feature = simplified.features[i]
+        const nameValue = feature?.properties?.[nameField]
+        const pcodeValue = feature?.properties?.[pcodeField]
+        
+        if (nameValue !== undefined && nameValue !== null && String(nameValue).trim() !== '') {
+          featuresWithName++
+          if (sampleValues.length < 3) {
+            sampleValues.push(String(nameValue).trim())
+          }
+        }
+        if (pcodeValue !== undefined && pcodeValue !== null && String(pcodeValue).trim() !== '') {
+          featuresWithPcode++
+        }
+      }
+      
+      console.log(`Level ${level} field check: ${featuresWithName}/${Math.min(10, simplified.features.length)} features have non-empty "${nameField}", ${featuresWithPcode} have "${pcodeField}"`)
+      if (sampleValues.length > 0) {
+        console.log(`Level ${level} sample names:`, sampleValues)
+      }
+      
+      // Sample first few features to see what we're working with
+      if (simplified.features.length > 0) {
+        const sampleFeature = simplified.features[0]
+        console.log(`Sample feature properties for level ${level}:`, {
+          nameFieldValue: sampleFeature.properties?.[nameField],
+          pcodeFieldValue: sampleFeature.properties?.[pcodeField],
+          allProperties: Object.keys(sampleFeature.properties || {}).slice(0, 15)
+        })
+      }
+
       for (const feature of simplified.features) {
         // Get name using the detected field name
-        const name = feature.properties?.[nameField] || null
+        let name = feature.properties?.[nameField] || null
+        
+        // If name is empty string, null, or undefined, try to get it as string
+        if (name !== null && name !== undefined) {
+          name = String(name).trim()
+          if (name === '') {
+            name = null
+          }
+        }
         
         // Get pcode using the detected field name, or try fallback patterns
         let pcode = feature.properties?.[pcodeField] || null
@@ -259,11 +324,29 @@ export async function POST(request: Request) {
             }
           }
         }
+        
+        // Convert pcode to string if it exists
+        if (pcode !== null && pcode !== undefined) {
+          pcode = String(pcode).trim()
+          if (pcode === '') {
+            pcode = null
+          }
+        }
 
-        if (!name) continue
+        if (!name) {
+          // Log why this feature was skipped (but only for first few to avoid spam)
+          if (boundaries.length < 3) {
+            console.log(`Skipping feature at level ${level}: name field "${nameField}" is empty or null. Sample properties:`, 
+              Object.entries(feature.properties || {}).slice(0, 5).map(([k, v]) => `${k}=${v}`).join(', '))
+          }
+          continue
+        }
 
         const geom = feature.geometry
         if (!geom || (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon')) {
+          if (boundaries.length < 3) {
+            console.log(`Skipping feature "${name}" at level ${level}: Invalid geometry type ${geom?.type || 'null'}`)
+          }
           continue
         }
 
@@ -315,8 +398,20 @@ export async function POST(request: Request) {
         })
       }
 
+      console.log(`Level ${level}: Extracted ${boundaries.length} boundaries from ${simplified.features.length} features`)
+      if (boundaries.length > 0) {
+        console.log(`Level ${level}: Sample boundaries:`, boundaries.slice(0, 3).map(b => b.name))
+      }
       allBoundariesByLevel.set(level, boundaries)
     }
+    
+    // Log total boundaries found
+    let totalBoundariesFound = 0
+    for (const [level, boundaries] of allBoundariesByLevel.entries()) {
+      totalBoundariesFound += boundaries.length
+      console.log(`Level ${level}: Found ${boundaries.length} boundaries`)
+    }
+    console.log(`Total boundaries to process: ${totalBoundariesFound}`)
 
     // Insert boundaries level by level, building hierarchy
     console.log(`Starting boundary insertion for ${sortedLevels.length} admin levels`)
