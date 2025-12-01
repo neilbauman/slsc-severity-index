@@ -61,17 +61,60 @@ export async function POST(request: Request) {
     const firstFeature = simplified.features[0]
     const properties = firstFeature?.properties || {}
     
-    // Find all ADM level fields (ADM0_EN, ADM1_EN, ADM2_EN, etc.)
+    // Log available properties for debugging
+    const propertyKeys = Object.keys(properties)
+    console.log('Available properties in file:', propertyKeys.slice(0, 20).join(', '), propertyKeys.length > 20 ? '...' : '')
+    
+    // Find all ADM level fields with flexible naming patterns
     const detectedLevels = new Map<number, { nameField: string; pcodeField: string }>()
     
     if (autoDetect && processAllLevels) {
-      // Auto-detect ADM fields
+      // Try multiple naming patterns for each admin level
       for (let level = 0; level <= 6; level++) {
-        const nameField = `ADM${level}_EN`
-        const pcodeField = `ADM${level}_PCODE`
+        // Try various field name patterns
+        const namePatterns = [
+          `ADM${level}_EN`,      // Standard: ADM0_EN, ADM1_EN
+          `ADM${level}`,         // Without suffix: ADM0, ADM1
+          `NAME_${level}`,       // Alternative: NAME_0, NAME_1
+          `ADMIN${level}`,       // Alternative: ADMIN0, ADMIN1
+          `ADM${level}_PT`,      // Portuguese: ADM0_PT, ADM1_PT
+          `ADM${level}_FR`,      // French: ADM0_FR, ADM1_FR
+          `adm${level}_en`,      // Lowercase: adm0_en, adm1_en
+          `Adm${level}_En`,      // Mixed case: Adm0_En, Adm1_En
+        ]
         
-        if (properties[nameField] || properties[pcodeField]) {
-          detectedLevels.set(level, { nameField, pcodeField })
+        const pcodePatterns = [
+          `ADM${level}_PCODE`,   // Standard: ADM0_PCODE, ADM1_PCODE
+          `ADM${level}_Pcode`,   // Mixed case
+          `PCODE${level}`,       // Alternative: PCODE0, PCODE1
+          `pcode${level}`,       // Lowercase
+          `ADM${level}_CODE`,    // Alternative: ADM0_CODE
+        ]
+        
+        // Find matching name field
+        let nameField: string | null = null
+        for (const pattern of namePatterns) {
+          if (properties[pattern] !== undefined && properties[pattern] !== null && properties[pattern] !== '') {
+            nameField = pattern
+            break
+          }
+        }
+        
+        // Find matching pcode field (optional)
+        let pcodeField: string | null = null
+        for (const pattern of pcodePatterns) {
+          if (properties[pattern] !== undefined && properties[pattern] !== null && properties[pattern] !== '') {
+            pcodeField = pattern
+            break
+          }
+        }
+        
+        // If we found a name field, add this level
+        if (nameField) {
+          detectedLevels.set(level, { 
+            nameField, 
+            pcodeField: pcodeField || `ADM${level}_PCODE` // Fallback to standard name if not found
+          })
         }
       }
     } else {
@@ -81,11 +124,21 @@ export async function POST(request: Request) {
     }
 
     if (detectedLevels.size === 0) {
+      // Provide helpful error message with available fields
+      const sampleFields = propertyKeys.slice(0, 10).join(', ')
+      const moreFields = propertyKeys.length > 10 ? ` (and ${propertyKeys.length - 10} more)` : ''
       return NextResponse.json(
-        { error: 'No admin level fields detected. Ensure your file has ADM0_EN, ADM1_EN, etc. fields.' },
+        { 
+          error: `No admin level fields detected. Found properties: ${sampleFields}${moreFields}. ` +
+                 `Please ensure your file has fields like ADM0_EN, ADM1_EN, ADM0, ADM1, NAME_0, NAME_1, etc.`
+        },
         { status: 400 }
       )
     }
+    
+    console.log('Detected admin levels:', Array.from(detectedLevels.entries()).map(([level, fields]) => 
+      `Level ${level}: ${fields.nameField}${fields.pcodeField ? `, ${fields.pcodeField}` : ''}`
+    ).join('; '))
 
     // Get current country config to check for existing pcode patterns
     const { data: country } = await supabase
@@ -118,8 +171,27 @@ export async function POST(request: Request) {
       const parentLevel = level > 0 ? level - 1 : null
 
       for (const feature of simplified.features) {
-        const name = feature.properties?.[nameField] || feature.properties?.[`ADM${level}_EN`] || null
-        const pcode = feature.properties?.[pcodeField] || feature.properties?.[`ADM${level}_PCODE`] || null
+        // Get name using the detected field name
+        const name = feature.properties?.[nameField] || null
+        
+        // Get pcode using the detected field name, or try fallback patterns
+        let pcode = feature.properties?.[pcodeField] || null
+        if (!pcode && pcodeField) {
+          // Try alternative pcode patterns if the detected one doesn't exist
+          const altPcodePatterns = [
+            `ADM${level}_PCODE`,
+            `ADM${level}_Pcode`,
+            `PCODE${level}`,
+            `pcode${level}`,
+            `ADM${level}_CODE`,
+          ]
+          for (const pattern of altPcodePatterns) {
+            if (feature.properties?.[pattern]) {
+              pcode = feature.properties[pattern]
+              break
+            }
+          }
+        }
 
         if (!name) continue
 
@@ -128,10 +200,31 @@ export async function POST(request: Request) {
           continue
         }
 
-        // Find parent Pcode
-        const parentPcode = parentLevel !== null
-          ? (feature.properties?.[`ADM${parentLevel}_PCODE`] || null)
-          : null
+        // Find parent Pcode using detected field names
+        let parentPcode: string | null = null
+        if (parentLevel !== null) {
+          const parentLevelConfig = detectedLevels.get(parentLevel)
+          if (parentLevelConfig) {
+            // Try the detected pcode field first
+            parentPcode = feature.properties?.[parentLevelConfig.pcodeField] || null
+            // If not found, try alternative patterns
+            if (!parentPcode) {
+              const altPatterns = [
+                `ADM${parentLevel}_PCODE`,
+                `ADM${parentLevel}_Pcode`,
+                `PCODE${parentLevel}`,
+                `pcode${parentLevel}`,
+                `ADM${parentLevel}_CODE`,
+              ]
+              for (const pattern of altPatterns) {
+                if (feature.properties?.[pattern]) {
+                  parentPcode = feature.properties[pattern]
+                  break
+                }
+              }
+            }
+          }
+        }
 
         // Validate pcode against existing pattern if one exists
         // We'll store the original pcode for pattern inference, but may need to set it to null for DB insertion
