@@ -81,21 +81,30 @@ export default function DatasetDetailPage() {
         })
       } else if (fileExtension === 'csv') {
         const text = await fileData.text()
-        const lines = text.split('\n').filter(line => line.trim())
-        const headers = lines[0]?.split(',') || []
-        const rows = lines.slice(1, 101).map((line: string) => {
-          const values = line.split(',')
-          const row: any = {}
-          headers.forEach((h: string, i: number) => {
-            row[h.trim()] = values[i]?.trim() || null
-          })
-          return row
+        // Use papaparse for proper CSV parsing (handles quoted fields, commas in quotes, etc.)
+        const Papa = (await import('papaparse')).default
+        const parseResult = Papa.parse<Record<string, any>>(text, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: (header: string) => header.trim(),
+          transform: (value: string) => value.trim() || null,
         })
+
+        if (parseResult.errors && parseResult.errors.length > 0) {
+          console.warn('CSV parsing warnings:', parseResult.errors)
+        }
+
+        const rows = parseResult.data.slice(0, 100) // Preview first 100 rows
+        const headers = parseResult.meta.fields || []
+
+        if (rows.length === 0) {
+          throw new Error('CSV file appears to be empty or has no valid data rows')
+        }
 
         setPreviewData({
           type: 'csv',
           rows,
-          totalRows: lines.length - 1,
+          totalRows: parseResult.data.length,
           headers,
         })
       } else if (fileExtension === 'json' || fileExtension === 'geojson') {

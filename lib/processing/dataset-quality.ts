@@ -85,17 +85,20 @@ export async function analyzeDatasetQuality(
           data = json
         }
       } else if (dataset.file_path.endsWith('.csv')) {
-        // Simple CSV parsing (for demo - use a proper CSV library in production)
-        const lines = text.split('\n')
-        const headers = lines[0].split(',')
-        data = lines.slice(1).map((line: string) => {
-          const values = line.split(',')
-          const row: any = {}
-          headers.forEach((h: string, i: number) => {
-            row[h.trim()] = values[i]?.trim() || null
-          })
-          return row
-        }).filter((r: any) => Object.keys(r).length > 0)
+        // Use papaparse for proper CSV parsing (handles quoted fields, commas in quotes, etc.)
+        const Papa = (await import('papaparse')).default
+        const parseResult = Papa.parse<Record<string, any>>(text, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: (header: string) => header.trim(),
+          transform: (value: string) => value.trim() || null,
+        })
+
+        if (parseResult.errors && parseResult.errors.length > 0) {
+          console.warn('CSV parsing warnings:', parseResult.errors)
+        }
+
+        data = parseResult.data
       } else if (dataset.file_path.endsWith('.xlsx') || dataset.file_path.endsWith('.xls')) {
         // Excel file processing
         const { processExcelFile } = await import('./excel-processor')
