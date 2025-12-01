@@ -144,7 +144,12 @@ export async function analyzeDatasetQuality(
 
   const totalRows = data.length
 
-  // Detect common field names
+  // Get metadata from dataset
+  const metadata = (dataset.metadata as any) || {}
+  const adminLevel = metadata.adminLevel ?? null
+  const columnMapping = metadata.columns || {}
+
+  // Use specified columns from metadata, or auto-detect
   const detectField = (patterns: string[], data: any[]): string | null => {
     for (const pattern of patterns) {
       const field = Object.keys(data[0] || {}).find(
@@ -155,9 +160,9 @@ export async function analyzeDatasetQuality(
     return null
   }
 
-  const pcodeField = detectField(['pcode', 'adm', 'code'], data)
+  const pcodeField = columnMapping.pcode || detectField(['pcode', 'adm', 'code'], data)
   const nameField = detectField(['name', 'admin', 'area'], data)
-  const populationField = detectField(['pop', 'population', 'total'], data)
+  const populationField = columnMapping.population || detectField(['pop', 'population', 'total'], data)
   const geometryField = detectField(['geometry', 'geom', 'shape'], data) || '_geometry'
 
   // 1. Check for missing pcodes
@@ -181,7 +186,7 @@ export async function analyzeDatasetQuality(
     }
   }
 
-  // 2. Check for duplicate pcodes
+  // 2. Check for duplicate pcodes (at the specified admin level)
   if (pcodeField) {
     const pcodeMap = new Map<string, number[]>()
     data.forEach((row, idx) => {
@@ -193,25 +198,68 @@ export async function analyzeDatasetQuality(
       }
     })
 
+    // Only flag duplicates if admin level is specified
+    // If admin level is not set, we still check but it's less critical
     const duplicatePcodes = Array.from(pcodeMap.entries())
       .filter(([_, indices]) => indices.length > 1)
       .flatMap(([pcode, indices]) => indices.map((idx) => ({ pcode, rowIndex: idx })))
 
     if (duplicatePcodes.length > 0) {
-      issues.push({
-        severity: 'error',
-        type: 'duplicate_pcode',
-        message: `Found ${duplicatePcodes.length} rows with duplicate pcodes`,
-        affectedCount: duplicatePcodes.length,
-        affectedRows: duplicatePcodes.slice(0, 20).map(({ pcode, rowIndex }) => ({
-          rowIndex,
-          pcode,
-          name: nameField ? data[rowIndex]?.[nameField] : undefined,
-        })),
-        recommendation: 'Pcodes should be unique. Review and fix duplicate pcodes.',
-        autoFixable: true,
-      })
-      recommendations.push(`Fix ${duplicatePcodes.length} duplicate pcodes`)
+      // If admin level is set, check if duplicates are at the correct level
+      // If all rows share the same parent level pcode (e.g., all ADM0 = "MZ"), that's expected for ADM2 data
+      if (adminLevel !== null && adminLevel > 0) {
+        // Get unique pcodes at the dataset's admin level
+        const uniquePcodes = new Set(data.map((row) => row[pcodeField]).filter(Boolean))
+        // If we have multiple unique pcodes but duplicates, that's a real issue
+        // If all rows have the same pcode, they might all share a parent (which is expected)
+        const allSamePcode = uniquePcodes.size === 1
+        
+        if (allSamePcode && uniquePcodes.size > 0) {
+          // All rows have the same pcode - this is expected for data at a higher admin level
+          // Don't flag as error, but note it as info
+          issues.push({
+            severity: 'info',
+            type: 'shared_parent_pcode',
+            message: `All rows share the same pcode (${Array.from(uniquePcodes)[0]}). This is expected if the dataset represents administrative units at level ${adminLevel} within a single parent unit.`,
+            affectedCount: duplicatePcodes.length,
+            affectedRows: [],
+            recommendation: `This is normal for ADM${adminLevel} data. Each row should have a unique pcode at the ADM${adminLevel} level. If all rows have the same parent pcode, ensure each row has a unique ADM${adminLevel} pcode.`,
+            autoFixable: false,
+          })
+        } else {
+          // Real duplicates at the specified level
+          issues.push({
+            severity: 'error',
+            type: 'duplicate_pcode',
+            message: `Found ${duplicatePcodes.length} rows with duplicate pcodes at ADM${adminLevel} level`,
+            affectedCount: duplicatePcodes.length,
+            affectedRows: duplicatePcodes.slice(0, 20).map(({ pcode, rowIndex }) => ({
+              rowIndex,
+              pcode,
+              name: nameField ? data[rowIndex]?.[nameField] : undefined,
+            })),
+            recommendation: `Pcodes should be unique at ADM${adminLevel} level. Review and fix duplicate pcodes.`,
+            autoFixable: true,
+          })
+          recommendations.push(`Fix ${duplicatePcodes.length} duplicate pcodes`)
+        }
+      } else {
+        // Admin level not set - flag as warning
+        issues.push({
+          severity: 'warning',
+          type: 'duplicate_pcode',
+          message: `Found ${duplicatePcodes.length} rows with duplicate pcodes`,
+          affectedCount: duplicatePcodes.length,
+          affectedRows: duplicatePcodes.slice(0, 20).map(({ pcode, rowIndex }) => ({
+            rowIndex,
+            pcode,
+            name: nameField ? data[rowIndex]?.[nameField] : undefined,
+          })),
+          recommendation: 'Pcodes should be unique. Review and fix duplicate pcodes. If this dataset represents a single administrative unit, this may be expected.',
+          autoFixable: true,
+        })
+        recommendations.push(`Review ${duplicatePcodes.length} duplicate pcodes`)
+      }
     }
   }
 
@@ -263,6 +311,7 @@ export async function analyzeDatasetQuality(
   }
 
   // 5. Check for unmatched pcodes (if admin boundaries exist)
+  // Only check at the specified admin level
   if (pcodeField) {
     const { data: country } = await supabase
       .from('countries')
@@ -271,11 +320,19 @@ export async function analyzeDatasetQuality(
       .single()
 
     if (country) {
-      const { data: boundaries } = await supabase
+      // Filter boundaries by admin level if specified
+      let boundariesQuery = supabase
         .from('admin_boundaries')
-        .select('pcode')
+        .select('pcode, level')
         .eq('country_id', country.id)
         .not('pcode', 'is', null)
+
+      // If admin level is specified, only check against boundaries at that level
+      if (adminLevel !== null) {
+        boundariesQuery = boundariesQuery.eq('level', adminLevel)
+      }
+
+      const { data: boundaries } = await boundariesQuery
 
       if (boundaries && boundaries.length > 0) {
         const validPcodes = new Set(boundaries.map((b: any) => b.pcode))
@@ -287,14 +344,14 @@ export async function analyzeDatasetQuality(
           issues.push({
             severity: 'warning',
             type: 'unmatched_pcode',
-            message: `${unmatchedPcodes.length} rows have pcodes that don't match any administrative boundaries`,
+            message: `${unmatchedPcodes.length} rows have pcodes that don't match any administrative boundaries${adminLevel !== null ? ` at ADM${adminLevel} level` : ''}`,
             affectedCount: unmatchedPcodes.length,
             affectedRows: unmatchedPcodes.slice(0, 20).map((row, idx) => ({
               rowIndex: idx,
               pcode: row[pcodeField],
               name: nameField ? row[nameField] : undefined,
             })),
-            recommendation: "Review pcodes that don't match administrative boundaries. They may need correction or the boundaries may need to be updated.",
+            recommendation: `Review pcodes that don't match administrative boundaries${adminLevel !== null ? ` at ADM${adminLevel} level` : ''}. They may need correction or the boundaries may need to be updated.`,
             autoFixable: false,
           })
           recommendations.push(`Review ${unmatchedPcodes.length} unmatched pcodes`)

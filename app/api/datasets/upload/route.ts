@@ -31,13 +31,20 @@ export async function POST(request: Request) {
       }
     )
 
-    const { countryId, datasetName, filePath } = await request.json()
+    const { countryId, datasetName, filePath, metadata } = await request.json()
 
     if (!countryId || !datasetName || !filePath) {
       return NextResponse.json(
         { error: 'Missing required fields: countryId, datasetName, filePath' },
         { status: 400 }
       )
+    }
+
+    // Merge metadata with defaults
+    const datasetMetadata = {
+      adminLevel: metadata?.adminLevel ?? null,
+      columns: metadata?.columns ?? {},
+      ...(metadata || {}),
     }
 
     // Create dataset record using service role client (bypasses RLS)
@@ -49,6 +56,7 @@ export async function POST(request: Request) {
         file_path: filePath,
         status: 'processing',
         uploaded_by: user.id,
+        metadata: datasetMetadata,
       })
       .select()
       .single()
