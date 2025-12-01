@@ -729,6 +729,15 @@ export async function POST(request: Request) {
     const totalInserted = Object.values(summary).reduce((sum: number, count: any) => sum + count, 0)
     const totalProcessed = Array.from(allBoundariesByLevel.values()).reduce((sum, boundaries) => sum + boundaries.length, 0)
     
+    // Collect geometry type statistics from the original simplified GeoJSON
+    const allGeometryTypes = new Map<string, number>()
+    if (simplified && simplified.features) {
+      for (const feature of simplified.features) {
+        const geomType = feature.geometry?.type || 'null'
+        allGeometryTypes.set(geomType, (allGeometryTypes.get(geomType) || 0) + 1)
+      }
+    }
+    
     if (totalInserted === 0) {
       console.error('=== BOUNDARY INSERTION FAILURE DEBUG ===')
       console.error('Total boundaries processed:', totalProcessed)
@@ -741,6 +750,7 @@ export async function POST(request: Request) {
           { count: boundaries.length, sampleNames: boundaries.slice(0, 3).map(b => b.name) }
         ])
       ))
+      console.error('Geometry types in file:', Object.fromEntries(allGeometryTypes.entries()))
       console.error('========================================')
       
       // Collect all errors from all levels
@@ -776,6 +786,7 @@ export async function POST(request: Request) {
                 diag
               ])
             ),
+            geometryTypesInFile: Object.fromEntries(allGeometryTypes.entries()),
             errors: allErrors
           }
         },
