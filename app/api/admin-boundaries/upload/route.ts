@@ -55,6 +55,7 @@ export async function POST(request: Request) {
     const file = formData.get('file') as File | null
 
     let geojson: any
+    let fileGeometryTypes: Record<string, number> = {} // Store geometry types for error reporting
 
     // Fetch or process file
     if (hdxUrl) {
