@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { createClient } from '@/lib/supabase/client'
 import * as XLSX from 'xlsx'
-import Papa from 'papaparse'
 
 type Step = 'upload' | 'configure'
 
@@ -76,6 +75,7 @@ export default function UploadCoreDatasetPage() {
         headers = jsonData.length > 0 ? Object.keys(jsonData[0] as Record<string, any>) : []
       } else if (fileExtension === 'csv') {
         const text = await file.text()
+        const Papa = (await import('papaparse')).default
         const parseResult = Papa.parse<Record<string, any>>(text, {
           header: true,
           skipEmptyLines: true,
