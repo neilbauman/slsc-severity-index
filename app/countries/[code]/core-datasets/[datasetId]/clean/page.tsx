@@ -45,6 +45,8 @@ export default function DatasetCleanPage() {
       if (response.ok) {
         const report = await response.json()
         setQualityReport(report)
+      } else {
+        console.error('Failed to fetch quality report:', response.statusText)
       }
 
       // Fetch versions
@@ -192,13 +194,26 @@ export default function DatasetCleanPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Data Quality Report</CardTitle>
-                <Badge
-                  variant="custom"
-                  className={`text-lg font-bold border-2 ${getScoreColor(qualityReport.overallScore)}`}
-                  style={{ borderColor: 'currentColor', backgroundColor: 'transparent' }}
-                >
-                  {qualityReport.overallScore}/100
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      setLoading(true)
+                      await loadData()
+                    }}
+                    disabled={loading}
+                  >
+                    Refresh
+                  </Button>
+                  <Badge
+                    variant="custom"
+                    className={`text-lg font-bold border-2 ${getScoreColor(qualityReport.overallScore)}`}
+                    style={{ borderColor: 'currentColor', backgroundColor: 'transparent' }}
+                  >
+                    {qualityReport.overallScore}/100
+                  </Badge>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -215,6 +230,11 @@ export default function DatasetCleanPage() {
                   <div>
                     <p className="text-gray-600">With Population</p>
                     <p className="font-semibold">{qualityReport.summary.completeness.hasPopulation}</p>
+                    {qualityReport.summary.completeness.hasPopulation === 0 && dataset?.metadata && (
+                      <p className="text-xs text-yellow-600 mt-1">
+                        ⚠️ Check column mapping in Configure
+                      </p>
+                    )}
                   </div>
                   <div>
                     <p className="text-gray-600">Issues</p>
