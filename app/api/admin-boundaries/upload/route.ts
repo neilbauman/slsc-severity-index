@@ -157,9 +157,13 @@ export async function POST(request: Request) {
         const pcodePatterns = [
           `ADM${level}_PCODE`,   // Standard: ADM0_PCODE, ADM1_PCODE
           `ADM${level}_Pcode`,   // Mixed case
+          `adm${level}_pcode`,   // Lowercase with underscore (Mozambique format)
+          `adm${level}_Pcode`,   // Mixed case with underscore
           `PCODE${level}`,       // Alternative: PCODE0, PCODE1
           `pcode${level}`,       // Lowercase
+          `pcode_${level}`,      // Lowercase with underscore
           `ADM${level}_CODE`,    // Alternative: ADM0_CODE
+          `adm${level}_code`,    // Lowercase alternative
           // Mozambique might not have pcode fields, so we'll make it optional
         ]
         
@@ -193,28 +197,52 @@ export async function POST(request: Request) {
           }
         }
         
-        // Find matching pcode field (optional)
+        // Find matching pcode field (optional) - check multiple features like name field
         let pcodeField: string | null = null
         for (const pattern of pcodePatterns) {
-          if (properties[pattern] !== undefined && properties[pattern] !== null && properties[pattern] !== '') {
+          // Check if ANY feature has this field with non-empty data
+          let foundWithData = 0
+          let firstNonEmptyValue: any = null
+          
+          for (let i = 0; i < Math.min(20, simplified.features.length); i++) {
+            const testValue = simplified.features[i]?.properties?.[pattern]
+            if (testValue !== undefined && testValue !== null && String(testValue).trim() !== '') {
+              foundWithData++
+              if (!firstNonEmptyValue) {
+                firstNonEmptyValue = testValue
+              }
+              if (foundWithData >= 3) break // Found at least 3 features with data
+            }
+          }
+          
+          // Require at least 2 features with data to avoid false positives
+          if (foundWithData >= 2 || (foundWithData >= 1 && simplified.features.length === 1)) {
             pcodeField = pattern
+            console.log(`Detected level ${level} pcode field: ${pattern} = "${firstNonEmptyValue}" (found in ${foundWithData} of ${Math.min(20, simplified.features.length)} checked features)`)
             break
           }
         }
         
-        // For Mozambique pattern, also check for pcode variants
+        // For Mozambique pattern, also check for additional pcode variants if not found yet
         if (nameField && !pcodeField) {
-          // Try common pcode patterns that might match Mozambique format
+          // Try additional patterns that might match Mozambique format
           const mozPcodePatterns = [
-            `pcode${level}`,
-            `pcode_${level}`,
+            `adm${level}_pcode`,  // Most common Mozambique format
             `code${level}`,
             `code_${level}`,
-            `ADM${level}_PCODE`,
           ]
           for (const pattern of mozPcodePatterns) {
-            if (properties[pattern] !== undefined && properties[pattern] !== null && properties[pattern] !== '') {
+            let foundWithData = 0
+            for (let i = 0; i < Math.min(20, simplified.features.length); i++) {
+              const testValue = simplified.features[i]?.properties?.[pattern]
+              if (testValue !== undefined && testValue !== null && String(testValue).trim() !== '') {
+                foundWithData++
+                if (foundWithData >= 2) break
+              }
+            }
+            if (foundWithData >= 2 || (foundWithData >= 1 && simplified.features.length === 1)) {
               pcodeField = pattern
+              console.log(`Detected level ${level} pcode field (Mozambique pattern): ${pattern}`)
               break
             }
           }
