@@ -55,7 +55,6 @@ export async function POST(request: Request) {
     const file = formData.get('file') as File | null
 
     let geojson: any
-    let fileGeometryTypes: Record<string, number> = {} // Store geometry types for error reporting
 
     // Fetch or process file
     if (hdxUrl) {
@@ -281,6 +280,7 @@ export async function POST(request: Request) {
       skippedInvalidGeometry: number
       processedCount: number
       samplePropertyKeys: string[]
+      geometryTypes?: Record<string, number>
       firstFeatureSample: any
     }>()
 
@@ -780,6 +780,10 @@ export async function POST(request: Request) {
       // Create a more helpful error message based on what we know
       let errorMessage = `No boundaries were inserted. Processed ${totalProcessed} boundaries across ${detectedLevels.size} admin levels, but none were inserted.`
       
+      // Calculate total skipped invalid geometry from diagnostics
+      const totalSkippedInvalidGeometry = Array.from(extractionDiagnostics.values())
+        .reduce((sum, diag) => sum + diag.skippedInvalidGeometry, 0)
+      
       // Check if all features were skipped due to geometry issues
       const geometryTypeEntries = Array.from(allGeometryTypes.entries())
       if (geometryTypeEntries.length > 0) {
@@ -791,8 +795,8 @@ export async function POST(request: Request) {
         if (pointCount > 0) {
           errorMessage += `\n\n⚠️ WARNING: Your file contains ${pointCount} Point geometries. Admin boundaries require Polygon or MultiPolygon geometries (actual boundary shapes), not Point geometries (centroids).`
           errorMessage += `\n\nPlease use a file that contains polygon boundaries, not point locations.`
-        } else if (totalProcessed === 0 && skippedInvalidGeometry > 0) {
-          errorMessage += `\n\nAll ${skippedInvalidGeometry} features were skipped due to invalid geometry types. Expected Polygon or MultiPolygon.`
+        } else if (totalProcessed === 0 && totalSkippedInvalidGeometry > 0) {
+          errorMessage += `\n\nAll ${totalSkippedInvalidGeometry} features were skipped due to invalid geometry types. Expected Polygon or MultiPolygon.`
         }
       }
       
@@ -904,20 +908,7 @@ async function processFile(file: File): Promise<any> {
       throw new Error(`Invalid GeoJSON file: ${(e as Error).message}`)
     }
   } else if (fileName.endsWith('.zip')) {
-    // Check for GDB (File Geodatabase) - these are typically .gdb.zip files
-  const isGDB = filePath.toLowerCase().endsWith('.gdb.zip') || 
-                filePath.toLowerCase().includes('.gdb') ||
-                allFiles.some(f => f.path.toLowerCase().includes('.gdb'))
-  
-  if (isGDB) {
-    throw new Error(
-      'File Geodatabase (.gdb) format is not yet supported. ' +
-      'Please convert your GDB file to Shapefile (.shp) or GeoJSON format. ' +
-      'You can use tools like QGIS, ArcGIS, or ogr2ogr to convert GDB to Shapefile.'
-    )
-  }
-
-  // Handle shapefile - COD files often have multiple shapefiles, we'll process the first one
+    // Handle zip files - could contain Shapefile or GeoJSON
     const arrayBuffer = await file.arrayBuffer()
     const zip = await JSZip.loadAsync(arrayBuffer)
     
@@ -929,14 +920,49 @@ async function processFile(file: File): Promise<any> {
       }
     })
     
-    // Find all .shp files (COD files may have multiple - one per admin level)
+    // Check for GDB (File Geodatabase) - these are typically .gdb.zip files
+    const isGDB = fileName.toLowerCase().endsWith('.gdb.zip') || 
+                  fileName.toLowerCase().includes('.gdb') ||
+                  allFiles.some(f => f.path.toLowerCase().includes('.gdb'))
+    
+    if (isGDB) {
+      throw new Error(
+        'File Geodatabase (.gdb) format is not yet supported. ' +
+        'Please convert your GDB file to Shapefile (.shp) or GeoJSON format. ' +
+        'You can use tools like QGIS, ArcGIS, or ogr2ogr to convert GDB to Shapefile.'
+      )
+    }
+    
+    // Check for GeoJSON files first (if someone zipped a GeoJSON file)
+    const geojsonFiles = allFiles.filter(f => {
+      const lowerPath = f.path.toLowerCase()
+      return lowerPath.endsWith('.geojson') || lowerPath.endsWith('.json')
+    })
+    
+    if (geojsonFiles.length > 0) {
+      // Process the first GeoJSON file found
+      const selectedGeoJSON = geojsonFiles[0]
+      const geojsonText = await selectedGeoJSON.file.async('string')
+      try {
+        const geojson = JSON.parse(geojsonText)
+        if (!geojson.type || geojson.type !== 'FeatureCollection') {
+          throw new Error('Invalid GeoJSON: must be a FeatureCollection')
+        }
+        console.log(`Found GeoJSON file in zip: ${selectedGeoJSON.path} with ${geojson.features?.length || 0} features`)
+        return geojson
+      } catch (e) {
+        throw new Error(`Failed to parse GeoJSON from zip: ${(e as Error).message}`)
+      }
+    }
+    
+    // If no GeoJSON, look for Shapefile
     const shpFiles = allFiles.filter(f => f.path.toLowerCase().endsWith('.shp'))
     
     if (shpFiles.length === 0) {
       const fileList = allFiles.map(f => f.path).slice(0, 10).join(', ')
       throw new Error(
-        `No .shp files found in zip. Found files: ${fileList || 'none'}. ` +
-        `Please ensure your zip contains .shp files.`
+        `No .shp or .geojson files found in zip. Found files: ${fileList || 'none'}. ` +
+        `Please ensure your zip contains either .shp files (Shapefile) or .geojson/.json files (GeoJSON).`
       )
     }
     

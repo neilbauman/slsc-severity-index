@@ -267,7 +267,7 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
                 required={uploadMethod === 'file'}
               />
               <p className="text-xs text-gray-500 mt-1">
-                Supported: GeoJSON (.geojson, .json) or Shapefile (.zip with .shp, .dbf). Files are uploaded to Supabase Storage (no size limit).
+                Supported: GeoJSON (.geojson, .json) or Shapefile (.zip with .shp, .dbf). GeoJSON files can also be in a .zip archive. Files are uploaded to Supabase Storage (no size limit).
               </p>
               {fileInfo && (
                 <p className="text-xs text-green-600 mt-1">✓ {fileInfo}</p>
