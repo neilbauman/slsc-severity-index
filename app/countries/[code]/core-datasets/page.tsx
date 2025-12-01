@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { DeleteDatasetButton } from '@/components/datasets/delete-dataset-button'
 
 export default async function CoreDatasetsPage({
   params,
@@ -34,6 +35,20 @@ export default async function CoreDatasetsPage({
   if (datasetsError) {
     console.error('Error fetching datasets:', datasetsError)
   }
+
+  // Deduplicate: Keep only the most recent dataset for each unique name
+  const uniqueDatasets = datasets ? (() => {
+    const seen = new Map<string, any>()
+    datasets.forEach((dataset: any) => {
+      const key = dataset.name.toLowerCase()
+      if (!seen.has(key) || new Date(dataset.uploaded_at) > new Date(seen.get(key)!.uploaded_at)) {
+        seen.set(key, dataset)
+      }
+    })
+    return Array.from(seen.values()).sort((a, b) => 
+      new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime()
+    )
+  })() : []
 
   const {
     data: { user },
@@ -95,7 +110,7 @@ export default async function CoreDatasetsPage({
                   )}
                 </div>
               )}
-              {datasets && datasets.length > 0 ? (
+              {uniqueDatasets && uniqueDatasets.length > 0 ? (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -108,7 +123,7 @@ export default async function CoreDatasetsPage({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {datasets.map((dataset: any) => (
+                    {uniqueDatasets.map((dataset: any) => (
                       <TableRow key={dataset.id}>
                         <TableCell className="font-medium">{dataset.name}</TableCell>
                         <TableCell>
@@ -135,9 +150,15 @@ export default async function CoreDatasetsPage({
                         </TableCell>
                         <TableCell>
                           {user && (
-                            <Link href={`/countries/${code}/core-datasets/${dataset.id}/clean`}>
-                              <Button size="sm" variant="secondary">Clean</Button>
-                            </Link>
+                            <div className="flex gap-2 items-center">
+                              <Link href={`/countries/${code}/core-datasets/${dataset.id}/clean`}>
+                                <Button size="sm" variant="secondary">Clean</Button>
+                              </Link>
+                              <DeleteDatasetButton 
+                                datasetId={dataset.id} 
+                                datasetName={dataset.name}
+                              />
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
