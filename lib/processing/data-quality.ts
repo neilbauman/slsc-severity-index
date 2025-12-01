@@ -90,14 +90,23 @@ export async function analyzeAdminBoundariesQuality(
   })
 
   // Build parent-child map
-  const idToBoundary = new Map(boundaries.map((b: any) => [b.id, b]))
-  const childrenByParent = new Map<string, typeof boundaries>()
+  type Boundary = {
+    id: string
+    level: number
+    name: string
+    pcode: string | null
+    parent_id: string | null
+    geometry: any
+  }
+  
+  const idToBoundary = new Map<string, Boundary>(boundaries.map((b: any) => [b.id, b as Boundary]))
+  const childrenByParent = new Map<string, Boundary[]>()
   boundaries.forEach((b: any) => {
     if (b.parent_id) {
       if (!childrenByParent.has(b.parent_id)) {
         childrenByParent.set(b.parent_id, [])
       }
-      childrenByParent.get(b.parent_id)!.push(b)
+      childrenByParent.get(b.parent_id)!.push(b as Boundary)
     }
   })
 
@@ -276,7 +285,8 @@ export async function analyzeAdminBoundariesQuality(
     if (!b.parent_id) return false
     const parent = idToBoundary.get(b.parent_id)
     if (!parent) return false
-    return parent.level >= b.level
+    const boundary = b as Boundary
+    return parent.level >= boundary.level
   })
 
   if (invalidParents.length > 0) {
