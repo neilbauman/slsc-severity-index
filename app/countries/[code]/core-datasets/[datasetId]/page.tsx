@@ -296,7 +296,13 @@ export default function DatasetDetailPage() {
             <CardTitle>Actions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/countries/${code}/core-datasets/${datasetId}/configure`)}
+              >
+                Configure
+              </Button>
               <Button
                 onClick={handleProcess}
                 disabled={processing || dataset.status === 'complete'}
@@ -312,8 +318,11 @@ export default function DatasetDetailPage() {
                 </Button>
               )}
             </div>
+            <p className="text-xs text-gray-600 mt-2">
+              Use "Configure" to set the admin level and map pcode/population columns. This is required for accurate quality analysis.
+            </p>
             {dataset.status === 'complete' && (
-              <p className="text-xs text-gray-600 mt-2">
+              <p className="text-xs text-gray-600 mt-1">
                 Dataset has been processed. Click "View Quality Report" to see the analysis.
               </p>
             )}

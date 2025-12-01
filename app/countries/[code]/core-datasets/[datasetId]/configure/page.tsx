@@ -1,0 +1,396 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { createClient } from '@/lib/supabase/client'
+import * as XLSX from 'xlsx'
+import Papa from 'papaparse'
+
+export default function ConfigureDatasetPage() {
+  const params = useParams()
+  const router = useRouter()
+  const code = params.code as string
+  const datasetId = params.datasetId as string
+
+  const [dataset, setDataset] = useState<any>(null)
+  const [previewData, setPreviewData] = useState<{
+    headers: string[]
+    rows: any[]
+    totalRows: number
+  } | null>(null)
+  const [adminLevel, setAdminLevel] = useState<number>(0)
+  const [availableAdminLevels, setAvailableAdminLevels] = useState<Array<{ level: number; name: string }>>([])
+  const [pcodeColumn, setPcodeColumn] = useState<string>('')
+  const [populationColumn, setPopulationColumn] = useState<string>('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    loadDataset()
+  }, [datasetId])
+
+  const loadDataset = async () => {
+    try {
+      const supabase = createClient()
+      
+      // Get country admin levels
+      const { data: country } = await supabase
+        .from('countries')
+        .select('config')
+        .eq('code', code.toUpperCase())
+        .single()
+
+      if (country?.config) {
+        const config = country.config as any
+        if (config.adminLevels && Array.isArray(config.adminLevels)) {
+          setAvailableAdminLevels(config.adminLevels)
+        }
+      }
+
+      // Fetch dataset
+      const { data: datasetData } = await supabase
+        .from('datasets')
+        .select('*')
+        .eq('id', datasetId)
+        .single()
+
+      if (datasetData) {
+        setDataset(datasetData)
+        
+        // Load existing metadata
+        const metadata = (datasetData.metadata as any) || {}
+        if (metadata.adminLevel !== undefined) {
+          setAdminLevel(metadata.adminLevel)
+        } else if (availableAdminLevels.length > 0) {
+          setAdminLevel(availableAdminLevels[0].level || 0)
+        }
+        
+        if (metadata.columns?.pcode) {
+          setPcodeColumn(metadata.columns.pcode)
+        }
+        if (metadata.columns?.population) {
+          setPopulationColumn(metadata.columns.population)
+        }
+
+        // Load preview
+        await loadPreview(datasetData)
+      }
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadPreview = async (dataset: any) => {
+    if (!dataset.file_path) return
+
+    try {
+      const supabase = createClient()
+      const { data: fileData, error: fileError } = await supabase.storage
+        .from('datasets')
+        .download(dataset.file_path)
+
+      if (fileError || !fileData) {
+        setError('Failed to load file preview')
+        return
+      }
+
+      const fileExtension = dataset.file_path.split('.').pop()?.toLowerCase()
+      let headers: string[] = []
+      let rows: any[] = []
+      let totalRows = 0
+
+      if (fileExtension === 'xlsx' || fileExtension === 'xls') {
+        const fileBuffer = await fileData.arrayBuffer()
+        const workbook = XLSX.read(fileBuffer, { type: 'array' })
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+        const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(firstSheet, {
+          raw: false,
+          defval: null,
+        })
+        rows = jsonData.slice(0, 100)
+        totalRows = jsonData.length
+        headers = jsonData.length > 0 ? Object.keys(jsonData[0] as Record<string, any>) : []
+      } else if (fileExtension === 'csv') {
+        const text = await fileData.text()
+        const PapaModule = (await import('papaparse')).default
+        const parseResult = PapaModule.parse<Record<string, any>>(text, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: (header: string) => header.trim(),
+          transform: (value: string) => value.trim() || null,
+          preview: 100,
+        })
+        rows = parseResult.data
+        totalRows = parseResult.data.length
+        headers = parseResult.meta.fields || []
+      } else if (fileExtension === 'json' || fileExtension === 'geojson') {
+        const text = await fileData.text()
+        const json = JSON.parse(text)
+        let data: any[] = []
+        if (json.features) {
+          data = json.features.map((f: any) => f.properties)
+        } else if (Array.isArray(json)) {
+          data = json
+        }
+        rows = data.slice(0, 100)
+        totalRows = data.length
+        headers = rows.length > 0 ? Object.keys(rows[0]) : []
+      }
+
+      // Auto-detect if not already set
+      if (!pcodeColumn) {
+        const detectedPcode = headers.find((h) => {
+          const lower = h.toLowerCase()
+          return lower.includes('pcode') || (lower.includes('adm') && lower.includes('code')) || lower === 'code'
+        })
+        if (detectedPcode) setPcodeColumn(detectedPcode)
+      }
+
+      if (!populationColumn) {
+        const detectedPop = headers.find((h) => {
+          const lower = h.toLowerCase()
+          return lower.includes('pop') || lower.includes('population') || lower.includes('people')
+        })
+        if (detectedPop) setPopulationColumn(detectedPop)
+      }
+
+      setPreviewData({ headers, rows, totalRows })
+    } catch (err: any) {
+      console.error('Preview load error:', err)
+      setError(`Failed to preview file: ${err.message}`)
+    }
+  }
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+
+    if (!pcodeColumn) {
+      setError('Please select a pcode column')
+      return
+    }
+
+    if (!populationColumn) {
+      setError('Please select a population column')
+      return
+    }
+
+    setSaving(true)
+
+    try {
+      const response = await fetch(`/api/datasets/${datasetId}/configure`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          metadata: {
+            adminLevel,
+            columns: {
+              pcode: pcodeColumn,
+              population: populationColumn,
+            },
+          },
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to save configuration')
+      }
+
+      alert('Configuration saved successfully!')
+      router.push(`/countries/${code}/core-datasets/${datasetId}`)
+    } catch (err: any) {
+      setError(err.message || 'Configuration failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p>Loading...</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white border-b border-gray-200">
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => router.back()}
+              className="text-sm font-semibold text-gray-900 hover:underline"
+            >
+              ← Back
+            </button>
+            <h1 className="text-lg font-semibold text-gray-900">
+              Configure Dataset: {dataset?.name || 'Loading...'}
+            </h1>
+            <div></div>
+          </div>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-4 py-6 max-w-4xl">
+        <Card>
+          <CardHeader>
+            <CardTitle>Dataset Configuration</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSave} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Administrative Level *
+                  </label>
+                  <select
+                    value={adminLevel}
+                    onChange={(e) => setAdminLevel(Number(e.target.value))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                    required
+                  >
+                    {availableAdminLevels.map((level) => (
+                      <option key={level.level} value={level.level}>
+                        Level {level.level}: {level.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Select the admin level this dataset represents
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Pcode Column *
+                  </label>
+                  <select
+                    value={pcodeColumn}
+                    onChange={(e) => setPcodeColumn(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                    required
+                  >
+                    <option value="">Select column...</option>
+                    {previewData?.headers.map((header) => (
+                      <option key={header} value={header}>
+                        {header}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Column containing administrative unit codes
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Population Column *
+                  </label>
+                  <select
+                    value={populationColumn}
+                    onChange={(e) => setPopulationColumn(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                    required
+                  >
+                    <option value="">Select column...</option>
+                    {previewData?.headers.map((header) => (
+                      <option key={header} value={header}>
+                        {header}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Column containing population values (e.g., F_T, Population, Total)
+                  </p>
+                </div>
+              </div>
+
+              {previewData && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-2">
+                    Data Preview ({previewData.totalRows} total rows)
+                  </label>
+                  <div className="overflow-x-auto border border-gray-200 rounded-md max-h-96">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          {previewData.headers.map((header) => (
+                            <th
+                              key={header}
+                              className={`px-2 py-2 text-left font-medium text-gray-700 ${
+                                header === pcodeColumn || header === populationColumn
+                                  ? 'bg-blue-100'
+                                  : ''
+                              }`}
+                            >
+                              {header}
+                              {header === pcodeColumn && (
+                                <span className="ml-1 text-blue-600">(pcode)</span>
+                              )}
+                              {header === populationColumn && (
+                                <span className="ml-1 text-blue-600">(population)</span>
+                              )}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 bg-white">
+                        {previewData.rows.slice(0, 10).map((row, idx) => (
+                          <tr key={idx}>
+                            {previewData.headers.map((header) => (
+                              <td
+                                key={header}
+                                className={`px-2 py-1 ${
+                                  header === pcodeColumn || header === populationColumn
+                                    ? 'bg-blue-50'
+                                    : ''
+                                }`}
+                              >
+                                {row[header] !== null && row[header] !== undefined
+                                  ? String(row[header])
+                                  : '—'}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <div className="text-xs text-red-600 bg-red-50 p-3 rounded">
+                  {error}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button type="submit" disabled={saving} className="flex-1">
+                  {saving ? 'Saving...' : 'Save Configuration'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => router.back()}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </main>
+    </div>
+  )
+}
+
