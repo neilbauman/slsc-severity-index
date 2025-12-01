@@ -72,21 +72,23 @@ export default function UploadCoreDatasetPage() {
         throw new Error(`Failed to upload file: ${uploadError.message}`)
       }
 
-      setProgress('Processing dataset...')
+      setProgress('Creating dataset record...')
 
-      // Create dataset record
-      const { error: datasetError } = await supabase
-        .from('datasets')
-        .insert({
-          country_id: country.id,
-          name: datasetName,
-          file_path: filePath,
-          status: 'processing',
-          uploaded_by: authUser.id,
-        })
+      // Create dataset record via API (uses service role to bypass RLS)
+      const createResponse = await fetch('/api/datasets/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          countryId: country.id,
+          datasetName,
+          filePath,
+        }),
+      })
 
-      if (datasetError) {
-        throw new Error(`Failed to create dataset record: ${datasetError.message}`)
+      const createData = await createResponse.json()
+
+      if (!createResponse.ok) {
+        throw new Error(createData.error || 'Failed to create dataset record')
       }
 
       setProgress('Dataset uploaded successfully!')
