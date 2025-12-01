@@ -145,26 +145,31 @@ export async function POST(request: Request) {
           continue
         }
 
-        const { data: insertedId, error } = await supabase.rpc('insert_admin_boundary', {
-          p_country_id: countryId,
-          p_level: boundary.level,
-          p_name: boundary.name,
-          p_pcode: boundary.pcode || null,
-          p_parent_id: parentId,
-          p_geometry: geom as any, // Pass as JSONB object
-        })
-        
-        if (error) {
-          const errorMsg = `${boundary.name}: ${error.message}`
-          errors.push(errorMsg)
-          console.error(`Error inserting boundary ${boundary.name}:`, error)
-        } else if (insertedId) {
-          insertedCount++
-          if (boundary.pcode) {
-            pcodeToIdMap.set(`${level}:${boundary.pcode}`, { level, id: insertedId })
+        try {
+          const { data: insertedId, error } = await supabase.rpc('insert_admin_boundary', {
+            p_country_id: countryId,
+            p_level: boundary.level,
+            p_name: boundary.name,
+            p_pcode: boundary.pcode || null,
+            p_parent_id: parentId,
+            p_geometry: geom as any, // Pass as JSONB object
+          })
+          
+          if (error) {
+            const errorMsg = `${boundary.name}: ${error.message}`
+            errors.push(errorMsg)
+            console.error(`Error inserting boundary ${boundary.name}:`, error.message, error.details, error.hint)
+          } else if (insertedId) {
+            insertedCount++
+            if (boundary.pcode) {
+              pcodeToIdMap.set(`${level}:${boundary.pcode}`, { level, id: insertedId })
+            }
+          } else {
+            errors.push(`${boundary.name}: Function returned null`)
           }
-        } else {
-          errors.push(`${boundary.name}: Failed to insert (returned null)`)
+        } catch (e: any) {
+          errors.push(`${boundary.name}: ${e.message || 'Unknown error'}`)
+          console.error(`Exception inserting boundary ${boundary.name}:`, e)
         }
       }
       
@@ -242,73 +247,88 @@ async function fetchFromHDX(url: string): Promise<any> {
 
 async function processFile(file: File): Promise<any> {
   const fileName = file.name.toLowerCase()
-  const baseName = fileName.replace('.zip', '').replace('.shp', '')
 
   if (fileName.endsWith('.geojson') || fileName.endsWith('.json')) {
     const text = await file.text()
-    return JSON.parse(text)
+    try {
+      return JSON.parse(text)
+    } catch (e) {
+      throw new Error(`Invalid GeoJSON file: ${(e as Error).message}`)
+    }
   } else if (fileName.endsWith('.zip')) {
-    // Handle shapefile - look for common shapefile names in the zip
+    // Handle shapefile - COD files often have multiple shapefiles, we'll process the first one
     const arrayBuffer = await file.arrayBuffer()
     const zip = await JSZip.loadAsync(arrayBuffer)
     
-    // Try to find .shp and .dbf files - they might have various naming patterns
-    let shpFile: JSZip.JSZipObject | null = null
-    let dbfFile: JSZip.JSZipObject | null = null
-    
+    // Get all files in the zip
+    const allFiles: Array<{ path: string; file: JSZip.JSZipObject }> = []
     zip.forEach((relativePath, file) => {
-      const lowerPath = relativePath.toLowerCase()
-      if (lowerPath.endsWith('.shp')) {
-        shpFile = file
-      } else if (lowerPath.endsWith('.dbf')) {
-        dbfFile = file
+      if (!file.dir) {
+        allFiles.push({ path: relativePath, file })
       }
     })
-
-    // Also try to find files with the base name
-    if (!shpFile) {
-      shpFile = zip.file(`${baseName}.shp`) || zip.file(`phl_adm_psa_namria_20231106_SHP.shp`)
-    }
-    if (!dbfFile) {
-      dbfFile = zip.file(`${baseName}.dbf`) || zip.file(`phl_adm_psa_namria_20231106_SHP.dbf`)
-    }
-
-    // Try common Philippines COD naming patterns
-    if (!shpFile || !dbfFile) {
-      zip.forEach((relativePath, file) => {
-        const lowerPath = relativePath.toLowerCase()
-        if (lowerPath.includes('adm') && lowerPath.endsWith('.shp') && !shpFile) {
-          shpFile = file
-        }
-        if (lowerPath.includes('adm') && lowerPath.endsWith('.dbf') && !dbfFile) {
-          dbfFile = file
-        }
-      })
-    }
-
-    if (!shpFile || !dbfFile) {
-      // List available files for debugging
-      const fileList = Object.keys(zip.files).filter(f => !zip.files[f].dir)
+    
+    // Find all .shp files (COD files may have multiple - one per admin level)
+    const shpFiles = allFiles.filter(f => f.path.toLowerCase().endsWith('.shp'))
+    
+    if (shpFiles.length === 0) {
+      const fileList = allFiles.map(f => f.path).slice(0, 10).join(', ')
       throw new Error(
-        `Shapefile is missing .shp or .dbf file. Found files: ${fileList.slice(0, 5).join(', ')}. ` +
-        `Please ensure your zip contains both .shp and .dbf files.`
+        `No .shp files found in zip. Found files: ${fileList || 'none'}. ` +
+        `Please ensure your zip contains .shp files.`
+      )
+    }
+    
+    // For COD files, typically there's one shapefile with all admin levels
+    // Try to find the main one (usually the largest or has 'adm' in name)
+    let selectedShp = shpFiles[0]
+    for (const shp of shpFiles) {
+      const lowerPath = shp.path.toLowerCase()
+      if (lowerPath.includes('adm') && !lowerPath.includes('adm0') && !lowerPath.includes('adm1')) {
+        selectedShp = shp
+        break
+      }
+    }
+    
+    // Find corresponding .dbf file (same base name)
+    const basePath = selectedShp.path.replace(/\.shp$/i, '')
+    const dbfFile = allFiles.find(f => 
+      f.path.toLowerCase() === `${basePath}.dbf`.toLowerCase()
+    )
+    
+    if (!dbfFile) {
+      const dbfFiles = allFiles.filter(f => f.path.toLowerCase().endsWith('.dbf'))
+      throw new Error(
+        `No matching .dbf file found for ${selectedShp.path}. ` +
+        `Found .dbf files: ${dbfFiles.map(f => f.path).join(', ')}. ` +
+        `The .shp and .dbf files must have the same base name.`
       )
     }
 
-    const shpBuffer = await shpFile.async('arraybuffer')
-    const dbfBuffer = await dbfFile.async('arraybuffer')
+    const shpBuffer = await selectedShp.file.async('arraybuffer')
+    const dbfBuffer = await dbfFile.file.async('arraybuffer')
 
     // Convert shapefile to GeoJSON
-    const source = await shp.open(shpBuffer, dbfBuffer)
-    const features: any[] = []
+    try {
+      const source = await shp.open(shpBuffer, dbfBuffer)
+      const features: any[] = []
 
-    let result = await source.read()
-    while (!result.done) {
-      features.push(result.value)
-      result = await source.read()
+      let result = await source.read()
+      while (!result.done) {
+        if (result.value) {
+          features.push(result.value)
+        }
+        result = await source.read()
+      }
+
+      if (features.length === 0) {
+        throw new Error('Shapefile contains no features')
+      }
+
+      return featureCollection(features)
+    } catch (e) {
+      throw new Error(`Failed to parse shapefile: ${(e as Error).message}`)
     }
-
-    return featureCollection(features)
   } else {
     throw new Error('Unsupported file format. Use GeoJSON (.geojson, .json) or Shapefile (.zip)')
   }
