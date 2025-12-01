@@ -11,11 +11,15 @@ DROP POLICY IF EXISTS "Users can update their own datasets" ON datasets;
 DROP POLICY IF EXISTS "Public can view public country datasets" ON datasets;
 
 -- Policy 1: Allow authenticated users to view all datasets
+-- Using a simple check to avoid recursion with user_country_permissions
 CREATE POLICY "Users can view datasets"
 ON datasets
 FOR SELECT
 TO authenticated
-USING (true);
+USING (
+  -- Simple check: just verify user is authenticated (no permission table lookup)
+  auth.uid() IS NOT NULL
+);
 
 -- Policy 2: Allow authenticated users to insert datasets
 -- (Note: We use service role for inserts via API, but this allows direct inserts too)
@@ -34,6 +38,7 @@ USING (uploaded_by = auth.uid())
 WITH CHECK (uploaded_by = auth.uid());
 
 -- Policy 4: Allow public to view datasets for public countries
+-- Avoid recursion by not checking user_country_permissions
 CREATE POLICY "Public can view public country datasets"
 ON datasets
 FOR SELECT
@@ -44,5 +49,6 @@ USING (
     WHERE countries.id = datasets.country_id
     AND countries.is_public = true
   )
+  -- Explicitly avoid any permission table lookups
 );
 
