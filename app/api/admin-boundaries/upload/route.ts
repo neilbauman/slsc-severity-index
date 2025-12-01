@@ -420,10 +420,28 @@ export async function POST(request: Request) {
         }
 
         const geom = feature.geometry
-        if (!geom || (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon')) {
+        if (!geom) {
           skippedInvalidGeometry++
           if (skippedInvalidGeometry <= 3) {
-            console.log(`Skipping feature "${name}" at level ${level}: Invalid geometry type ${geom?.type || 'null'}`)
+            console.log(`Skipping feature "${name}" at level ${level}: No geometry found`)
+          }
+          continue
+        }
+        
+        // Log geometry type for first few features to diagnose
+        if (skippedInvalidGeometry === 0 && processedCount === 0) {
+          console.log(`Level ${level} first feature geometry:`, {
+            type: geom.type,
+            hasCoordinates: !!geom.coordinates,
+            coordinatesLength: geom.coordinates?.length,
+            fullGeometry: JSON.stringify(geom).substring(0, 200)
+          })
+        }
+        
+        if (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon') {
+          skippedInvalidGeometry++
+          if (skippedInvalidGeometry <= 3) {
+            console.log(`Skipping feature "${name}" at level ${level}: Invalid geometry type "${geom.type}". Expected Polygon or MultiPolygon.`)
           }
           continue
         }
@@ -486,6 +504,13 @@ export async function POST(request: Request) {
         console.log(`Level ${level}: WARNING - ${processedCount} features were processed but ${boundaries.length} boundaries were created. This may indicate a parent lookup issue.`)
       }
       
+      // Collect geometry type statistics
+      const geometryTypes = new Map<string, number>()
+      for (const feature of simplified.features) {
+        const geomType = feature.geometry?.type || 'null'
+        geometryTypes.set(geomType, (geometryTypes.get(geomType) || 0) + 1)
+      }
+      
       // Store diagnostics for this level
       extractionDiagnostics.set(level, {
         featuresChecked: simplified.features.length,
@@ -495,12 +520,15 @@ export async function POST(request: Request) {
         skippedInvalidGeometry,
         processedCount,
         samplePropertyKeys: Array.from(allPropertyKeys).slice(0, 20),
+        geometryTypes: Object.fromEntries(geometryTypes.entries()),
         firstFeatureSample: simplified.features.length > 0 ? {
           properties: Object.fromEntries(
             Object.entries(simplified.features[0].properties || {}).slice(0, 10)
           ),
           nameFieldValue: simplified.features[0].properties?.[nameField],
-          nameFieldValueCaseInsensitive: Object.keys(simplified.features[0].properties || {}).find(k => k.toLowerCase() === nameField.toLowerCase())
+          nameFieldValueCaseInsensitive: Object.keys(simplified.features[0].properties || {}).find(k => k.toLowerCase() === nameField.toLowerCase()),
+          geometryType: simplified.features[0].geometry?.type || 'null',
+          hasGeometry: !!simplified.features[0].geometry
         } : null
       })
       
