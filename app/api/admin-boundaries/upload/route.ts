@@ -134,7 +134,11 @@ export async function POST(request: Request) {
         // Try various field name patterns
         // Check Mozambique patterns first (more specific)
         const namePatterns = [
-          // Mozambique pattern: name, name1, name2, name3 (check these first)
+          // Mozambique COD pattern: adm0_name, adm1_name, adm2_name, adm3_name (check these first)
+          `adm${level}_name`,    // Primary: adm0_name, adm1_name, adm2_name, adm3_name
+          `ADM${level}_NAME`,    // Uppercase variant
+          `Adm${level}_Name`,    // Mixed case variant
+          // Mozambique alternative pattern: name, name1, name2, name3
           level === 0 ? 'name' : null,
           level === 1 ? 'name1' : null,
           level === 2 ? 'name2' : null,
@@ -982,14 +986,46 @@ async function processFile(file: File): Promise<any> {
       )
     }
     
-    // Check for GeoJSON files first (if someone zipped a GeoJSON file)
+    // Check for GeoJSON files first (if someone zipped GeoJSON files)
     const geojsonFiles = allFiles.filter(f => {
       const lowerPath = f.path.toLowerCase()
       return lowerPath.endsWith('.geojson') || lowerPath.endsWith('.json')
     })
     
     if (geojsonFiles.length > 0) {
-      // Process the first GeoJSON file found
+      // Check if we have multiple admin level files (e.g., moz_admin0.geojson, moz_admin1.geojson)
+      // If so, merge them into one FeatureCollection
+      const adminLevelFiles = geojsonFiles.filter(f => {
+        const lowerPath = f.path.toLowerCase()
+        return /admin\d+\.(geojson|json)$/i.test(lowerPath) || 
+               /adm\d+\.(geojson|json)$/i.test(lowerPath)
+      })
+      
+      if (adminLevelFiles.length > 1) {
+        // Multiple admin level files - merge them
+        console.log(`Found ${adminLevelFiles.length} admin level GeoJSON files, merging...`)
+        const allFeatures: any[] = []
+        
+        for (const adminFile of adminLevelFiles) {
+          const geojsonText = await adminFile.file.async('string')
+          try {
+            const geojson = JSON.parse(geojsonText)
+            if (geojson.type === 'FeatureCollection' && geojson.features) {
+              allFeatures.push(...geojson.features)
+              console.log(`  Added ${geojson.features.length} features from ${adminFile.path}`)
+            }
+          } catch (e) {
+            console.warn(`Failed to parse ${adminFile.path}: ${(e as Error).message}`)
+          }
+        }
+        
+        if (allFeatures.length > 0) {
+          console.log(`Merged ${allFeatures.length} total features from ${adminLevelFiles.length} files`)
+          return featureCollection(allFeatures)
+        }
+      }
+      
+      // Single GeoJSON file or non-admin-level files - process the first one
       const selectedGeoJSON = geojsonFiles[0]
       const geojsonText = await selectedGeoJSON.file.async('string')
       try {
