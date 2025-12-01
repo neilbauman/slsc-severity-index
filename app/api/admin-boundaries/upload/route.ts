@@ -999,10 +999,6 @@ async function processFile(file: File): Promise<any> {
     try {
       const source = await shp.open(shpBuffer, dbfBuffer)
       const features: any[] = []
-      
-      // Check geometry type from shapefile header
-      const geometryType = source.type || 'Unknown'
-      console.log(`Shapefile geometry type: ${geometryType}`)
 
       let result = await source.read()
       let featureCount = 0
