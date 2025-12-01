@@ -76,16 +76,9 @@ export async function POST(request: Request) {
       // Try multiple naming patterns for each admin level
       for (let level = 0; level <= 6; level++) {
         // Try various field name patterns
+        // Check Mozambique patterns first (more specific)
         const namePatterns = [
-          `ADM${level}_EN`,      // Standard: ADM0_EN, ADM1_EN
-          `ADM${level}`,         // Without suffix: ADM0, ADM1
-          `NAME_${level}`,       // Alternative: NAME_0, NAME_1
-          `ADMIN${level}`,       // Alternative: ADMIN0, ADMIN1
-          `ADM${level}_PT`,      // Portuguese: ADM0_PT, ADM1_PT
-          `ADM${level}_FR`,      // French: ADM0_FR, ADM1_FR
-          `adm${level}_en`,      // Lowercase: adm0_en, adm1_en
-          `Adm${level}_En`,      // Mixed case: Adm0_En, Adm1_En
-          // Mozambique pattern: name, name1, name2, name3
+          // Mozambique pattern: name, name1, name2, name3 (check these first)
           level === 0 ? 'name' : null,
           level === 1 ? 'name1' : null,
           level === 2 ? 'name2' : null,
@@ -94,6 +87,15 @@ export async function POST(request: Request) {
           level === 4 ? 'adm4_name' : null,
           level === 4 ? 'adm4_name1' : null,
           level === 4 ? 'adm4_name2' : null,
+          // Standard patterns
+          `ADM${level}_EN`,      // Standard: ADM0_EN, ADM1_EN
+          `ADM${level}`,         // Without suffix: ADM0, ADM1
+          `NAME_${level}`,       // Alternative: NAME_0, NAME_1
+          `ADMIN${level}`,       // Alternative: ADMIN0, ADMIN1
+          `ADM${level}_PT`,      // Portuguese: ADM0_PT, ADM1_PT
+          `ADM${level}_FR`,      // French: ADM0_FR, ADM1_FR
+          `adm${level}_en`,      // Lowercase: adm0_en, adm1_en
+          `Adm${level}_En`,      // Mixed case: Adm0_En, Adm1_En
         ].filter(Boolean) as string[]
         
         const pcodePatterns = [
@@ -108,8 +110,11 @@ export async function POST(request: Request) {
         // Find matching name field
         let nameField: string | null = null
         for (const pattern of namePatterns) {
-          if (properties[pattern] !== undefined && properties[pattern] !== null && properties[pattern] !== '') {
+          const value = properties[pattern]
+          // Check if field exists and has a non-empty value
+          if (value !== undefined && value !== null && String(value).trim() !== '') {
             nameField = pattern
+            console.log(`Detected level ${level} name field: ${pattern} = "${value}"`)
             break
           }
         }
