@@ -552,12 +552,33 @@ export async function POST(request: Request) {
         })
       }
 
+      // Deduplicate boundaries by name + pcode + level
+      // If multiple features have the same name/pcode, merge their geometries or keep the first one
+      const uniqueBoundaries = new Map<string, any>()
+      for (const boundary of boundaries) {
+        // Create a unique key from name, pcode, and level
+        const key = `${boundary.level}:${boundary.name}:${boundary.pcode || 'null'}`
+        
+        if (uniqueBoundaries.has(key)) {
+          // If we already have this boundary, we could merge geometries, but for now just skip duplicates
+          // In the future, we could merge MultiPolygon geometries here
+          console.log(`Skipping duplicate boundary: ${key}`)
+          continue
+        }
+        
+        uniqueBoundaries.set(key, boundary)
+      }
+      
+      // Convert back to array
+      const deduplicatedBoundaries = Array.from(uniqueBoundaries.values())
+      
       console.log(`Level ${level}: Extracted ${boundaries.length} boundaries from ${simplified.features.length} features`)
+      console.log(`Level ${level}: After deduplication: ${deduplicatedBoundaries.length} unique boundaries`)
       console.log(`Level ${level}: Skipped ${skippedNoName} features (no name), ${skippedInvalidGeometry} features (invalid geometry), ${processedCount} features processed`)
-      if (boundaries.length > 0) {
-        console.log(`Level ${level}: Sample boundaries:`, boundaries.slice(0, 3).map(b => b.name))
+      if (deduplicatedBoundaries.length > 0) {
+        console.log(`Level ${level}: Sample boundaries:`, deduplicatedBoundaries.slice(0, 3).map(b => b.name))
       } else if (processedCount > 0) {
-        console.log(`Level ${level}: WARNING - ${processedCount} features were processed but ${boundaries.length} boundaries were created. This may indicate a parent lookup issue.`)
+        console.log(`Level ${level}: WARNING - ${processedCount} features were processed but ${deduplicatedBoundaries.length} boundaries were created. This may indicate a parent lookup issue.`)
       }
       
       // Collect geometry type statistics
@@ -588,7 +609,7 @@ export async function POST(request: Request) {
         } : null
       })
       
-      allBoundariesByLevel.set(level, boundaries)
+      allBoundariesByLevel.set(level, deduplicatedBoundaries)
     }
     
     // Log total boundaries found
