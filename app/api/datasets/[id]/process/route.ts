@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { processExcelFile, validateExcelData } from '@/lib/processing/excel-processor'
+import { processCSVFile, validateCSVData } from '@/lib/processing/csv-processor'
 
 export const runtime = 'nodejs'
 
@@ -78,9 +79,13 @@ export async function POST(
       const fileBuffer = await fileData.arrayBuffer()
       processingResult = await processExcelFile(fileBuffer)
       validationResult = validateExcelData(processingResult)
+    } else if (fileExtension === 'csv') {
+      const fileText = await fileData.text()
+      processingResult = await processCSVFile(fileText)
+      validationResult = validateCSVData(processingResult)
     } else {
       return NextResponse.json(
-        { error: `File type .${fileExtension} processing not yet implemented` },
+        { error: `File type .${fileExtension} processing not yet implemented. Supported formats: CSV, Excel (.xlsx, .xls)` },
         { status: 400 }
       )
     }
