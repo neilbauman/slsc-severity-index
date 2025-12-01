@@ -151,9 +151,14 @@ export default async function CoreDatasetsPage({
                         <TableCell>
                           {user && (
                             <div className="flex gap-2 items-center">
-                              <Link href={`/countries/${code}/core-datasets/${dataset.id}/clean`}>
-                                <Button size="sm" variant="secondary">Clean</Button>
+                              <Link href={`/countries/${code}/core-datasets/${dataset.id}`}>
+                                <Button size="sm" variant="outline">View</Button>
                               </Link>
+                              {dataset.status === 'complete' && (
+                                <Link href={`/countries/${code}/core-datasets/${dataset.id}/clean`}>
+                                  <Button size="sm" variant="secondary">Clean</Button>
+                                </Link>
+                              )}
                               <DeleteDatasetButton 
                                 datasetId={dataset.id} 
                                 datasetName={dataset.name}
