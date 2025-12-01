@@ -79,7 +79,7 @@ export async function POST(request: Request) {
     // Simplify geometries
     const simplified = simplify(geojson, { tolerance: simplifyTolerance, highQuality: true })
 
-    // Log geometry types immediately to diagnose issues
+    // Log geometry types immediately to diagnose issues and store for later use
     const geometryTypeCounts = new Map<string, number>()
     for (const feature of simplified.features) {
       const geomType = feature.geometry?.type || 'null'
@@ -97,6 +97,9 @@ export async function POST(request: Request) {
       })
     }
     console.log('=============================')
+    
+    // Store geometry types for use in error messages (make it accessible in the scope)
+    const fileGeometryTypes = Object.fromEntries(geometryTypeCounts.entries())
 
     // Detect available admin levels from the first feature
     const firstFeature = simplified.features[0]
@@ -734,9 +737,15 @@ export async function POST(request: Request) {
     const totalInserted = Object.values(summary).reduce((sum: number, count: any) => sum + count, 0)
     const totalProcessed = Array.from(allBoundariesByLevel.values()).reduce((sum, boundaries) => sum + boundaries.length, 0)
     
-    // Collect geometry type statistics from the original simplified GeoJSON
+    // Use the geometry types we collected earlier, or collect them now if not available
     const allGeometryTypes = new Map<string, number>()
-    if (simplified && simplified.features) {
+    if (fileGeometryTypes && Object.keys(fileGeometryTypes).length > 0) {
+      // Use the types we collected earlier
+      for (const [type, count] of Object.entries(fileGeometryTypes)) {
+        allGeometryTypes.set(type, count)
+      }
+    } else if (simplified && simplified.features) {
+      // Fallback: collect them now
       for (const feature of simplified.features) {
         const geomType = feature.geometry?.type || 'null'
         allGeometryTypes.set(geomType, (allGeometryTypes.get(geomType) || 0) + 1)
@@ -894,7 +903,20 @@ async function processFile(file: File): Promise<any> {
       throw new Error(`Invalid GeoJSON file: ${(e as Error).message}`)
     }
   } else if (fileName.endsWith('.zip')) {
-    // Handle shapefile - COD files often have multiple shapefiles, we'll process the first one
+    // Check for GDB (File Geodatabase) - these are typically .gdb.zip files
+  const isGDB = filePath.toLowerCase().endsWith('.gdb.zip') || 
+                filePath.toLowerCase().includes('.gdb') ||
+                allFiles.some(f => f.path.toLowerCase().includes('.gdb'))
+  
+  if (isGDB) {
+    throw new Error(
+      'File Geodatabase (.gdb) format is not yet supported. ' +
+      'Please convert your GDB file to Shapefile (.shp) or GeoJSON format. ' +
+      'You can use tools like QGIS, ArcGIS, or ogr2ogr to convert GDB to Shapefile.'
+    )
+  }
+
+  // Handle shapefile - COD files often have multiple shapefiles, we'll process the first one
     const arrayBuffer = await file.arrayBuffer()
     const zip = await JSZip.loadAsync(arrayBuffer)
     
@@ -950,17 +972,43 @@ async function processFile(file: File): Promise<any> {
     try {
       const source = await shp.open(shpBuffer, dbfBuffer)
       const features: any[] = []
+      
+      // Check geometry type from shapefile header
+      const geometryType = source.type || 'Unknown'
+      console.log(`Shapefile geometry type: ${geometryType}`)
 
       let result = await source.read()
+      let featureCount = 0
+      const geometryTypes = new Map<string, number>()
+      
       while (!result.done) {
         if (result.value) {
           features.push(result.value)
+          featureCount++
+          
+          // Track geometry types
+          const geomType = result.value.geometry?.type || 'null'
+          geometryTypes.set(geomType, (geometryTypes.get(geomType) || 0) + 1)
+          
+          // Log first few geometry types for debugging
+          if (featureCount <= 3) {
+            console.log(`Feature ${featureCount} geometry type: ${geomType}`)
+          }
         }
         result = await source.read()
       }
+      
+      console.log(`Shapefile contains ${featureCount} features`)
+      console.log(`Geometry type distribution:`, Object.fromEntries(geometryTypes.entries()))
 
       if (features.length === 0) {
         throw new Error('Shapefile contains no features')
+      }
+      
+      // Warn if we have Point geometries
+      const pointCount = geometryTypes.get('Point') || 0
+      if (pointCount > 0) {
+        console.warn(`⚠️ WARNING: Shapefile contains ${pointCount} Point geometries. Admin boundaries require Polygon or MultiPolygon geometries.`)
       }
 
       return featureCollection(features)
