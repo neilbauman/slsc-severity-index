@@ -13,8 +13,15 @@ VALUES (
 ON CONFLICT (id) DO NOTHING;
 
 -- Apply RLS policies for datasets bucket
+-- Drop existing policies if they exist (to allow re-running this migration)
+DROP POLICY IF EXISTS "Allow authenticated users to upload dataset files" ON storage.objects;
+DROP POLICY IF EXISTS "Allow authenticated users to read dataset files" ON storage.objects;
+DROP POLICY IF EXISTS "Allow authenticated users to delete dataset files" ON storage.objects;
+DROP POLICY IF EXISTS "Allow service role to read dataset files" ON storage.objects;
+DROP POLICY IF EXISTS "Allow service role to delete dataset files" ON storage.objects;
+
 -- Policy 1: Allow authenticated users to upload files
-CREATE POLICY IF NOT EXISTS "Allow authenticated users to upload dataset files"
+CREATE POLICY "Allow authenticated users to upload dataset files"
 ON storage.objects
 FOR INSERT
 TO authenticated
@@ -23,7 +30,7 @@ WITH CHECK (
 );
 
 -- Policy 2: Allow authenticated users to read files
-CREATE POLICY IF NOT EXISTS "Allow authenticated users to read dataset files"
+CREATE POLICY "Allow authenticated users to read dataset files"
 ON storage.objects
 FOR SELECT
 TO authenticated
@@ -32,7 +39,7 @@ USING (
 );
 
 -- Policy 3: Allow authenticated users to delete files
-CREATE POLICY IF NOT EXISTS "Allow authenticated users to delete dataset files"
+CREATE POLICY "Allow authenticated users to delete dataset files"
 ON storage.objects
 FOR DELETE
 TO authenticated
@@ -41,7 +48,7 @@ USING (
 );
 
 -- Policy 4: Allow service role to read files (for server-side processing)
-CREATE POLICY IF NOT EXISTS "Allow service role to read dataset files"
+CREATE POLICY "Allow service role to read dataset files"
 ON storage.objects
 FOR SELECT
 TO service_role
@@ -50,7 +57,7 @@ USING (
 );
 
 -- Policy 5: Allow service role to delete files (for cleanup)
-CREATE POLICY IF NOT EXISTS "Allow service role to delete dataset files"
+CREATE POLICY "Allow service role to delete dataset files"
 ON storage.objects
 FOR DELETE
 TO service_role
