@@ -82,8 +82,8 @@ export default function DatasetDetailPage() {
       } else if (fileExtension === 'csv') {
         const text = await fileData.text()
         // Use papaparse for proper CSV parsing (handles quoted fields, commas in quotes, etc.)
-        const Papa = (await import('papaparse')).default
-        const parseResult = Papa.parse<Record<string, any>>(text, {
+        const Papa = await import('papaparse')
+        const parseResult = Papa.default.parse<Record<string, any>>(text, {
           header: true,
           skipEmptyLines: true,
           transformHeader: (header: string) => header.trim(),
