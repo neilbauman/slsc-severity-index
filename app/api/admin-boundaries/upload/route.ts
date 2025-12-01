@@ -331,14 +331,25 @@ export async function POST(request: Request) {
 
         try {
           // Use service role client to bypass RLS policies
-          const { data: insertedId, error } = await serviceRoleSupabase.rpc('insert_admin_boundary', {
+          const rpcParams = {
             p_country_id: countryId,
             p_level: boundary.level,
             p_name: boundary.name,
             p_pcode: boundary.pcode || null,
             p_parent_id: parentId,
             p_geometry: geom as any, // Pass as JSONB object
+          }
+          
+          console.log(`Calling insert_admin_boundary for ${boundary.name} (Level ${level})`, {
+            countryId,
+            level: boundary.level,
+            name: boundary.name,
+            hasPcode: !!boundary.pcode,
+            hasParent: !!parentId,
+            geometryType: geom.type
           })
+          
+          const { data: insertedId, error } = await serviceRoleSupabase.rpc('insert_admin_boundary', rpcParams)
           
           if (error) {
             // If error is about pattern mismatch, try inserting without pcode
@@ -364,18 +375,33 @@ export async function POST(request: Request) {
                   pcodeToIdMap.set(`${level}:${boundary.pcode}`, { level, id: retryId })
                 }
               }
-            } else {
-              const errorMsg = `${boundary.name}: ${error.message}`
-              errors.push(errorMsg)
-              console.error(`Error inserting boundary ${boundary.name}:`, error.message, error.details, error.hint)
-            }
+          } else {
+            const errorMsg = `${boundary.name}: ${error.message}`
+            errors.push(errorMsg)
+            console.error(`Error inserting boundary ${boundary.name} (Level ${level}):`, {
+              message: error.message,
+              details: error.details,
+              hint: error.hint,
+              code: error.code,
+              boundary: {
+                name: boundary.name,
+                level: boundary.level,
+                hasPcode: !!boundary.pcode,
+                hasParent: !!parentId,
+                geometryType: geom.type
+              }
+            })
+          }
           } else if (insertedId) {
             insertedCount++
+            console.log(`Successfully inserted boundary ${boundary.name} (Level ${level}) with ID: ${insertedId}`)
             if (boundary.pcode) {
               pcodeToIdMap.set(`${level}:${boundary.pcode}`, { level, id: insertedId })
             }
           } else {
-            errors.push(`${boundary.name}: Function returned null`)
+            const errorMsg = `${boundary.name}: Function returned null (no ID returned)`
+            errors.push(errorMsg)
+            console.error(`Function returned null for boundary ${boundary.name} (Level ${level}). Response:`, { data: insertedId, error: null })
           }
         } catch (e: any) {
           errors.push(`${boundary.name}: ${e.message || 'Unknown error'}`)
@@ -433,14 +459,38 @@ export async function POST(request: Request) {
 
     // Check if any boundaries were actually inserted
     const totalInserted = Object.values(summary).reduce((sum: number, count: any) => sum + count, 0)
+    const totalProcessed = Array.from(allBoundariesByLevel.values()).reduce((sum, boundaries) => sum + boundaries.length, 0)
     
     if (totalInserted === 0) {
-      console.error('No boundaries were inserted. Summary:', summary)
+      console.error('=== BOUNDARY INSERTION FAILURE DEBUG ===')
+      console.error('Total boundaries processed:', totalProcessed)
+      console.error('Total boundaries inserted:', totalInserted)
+      console.error('Summary by level:', summary)
+      console.error('Detected levels:', Array.from(detectedLevels.entries()))
+      console.error('Boundaries by level:', Object.fromEntries(
+        Array.from(allBoundariesByLevel.entries()).map(([level, boundaries]) => [
+          level,
+          { count: boundaries.length, sampleNames: boundaries.slice(0, 3).map(b => b.name) }
+        ])
+      ))
+      console.error('========================================')
+      
+      // Collect all errors from all levels
+      const allErrors: string[] = []
+      for (const level of sortedLevels) {
+        const boundaries = allBoundariesByLevel.get(level) || []
+        if (boundaries.length > 0 && summary[level] === 0) {
+          allErrors.push(`Level ${level}: ${boundaries.length} boundaries processed, 0 inserted`)
+        }
+      }
+      
       return NextResponse.json(
         { 
-          error: 'No boundaries were inserted. This may be due to database errors, invalid geometries, or missing required fields. Check server logs for details.',
+          error: `No boundaries were inserted. Processed ${totalProcessed} boundaries across ${detectedLevels.size} admin levels, but none were inserted. This may be due to database errors, invalid geometries, or RLS policy restrictions. Check server logs for detailed error messages.`,
           summary,
           debug: {
+            totalProcessed,
+            totalInserted,
             detectedLevels: Array.from(detectedLevels.entries()).map(([level, fields]) => ({
               level,
               nameField: fields.nameField,
@@ -451,7 +501,8 @@ export async function POST(request: Request) {
                 level,
                 { count: boundaries.length, sampleNames: boundaries.slice(0, 3).map(b => b.name) }
               ])
-            )
+            ),
+            errors: allErrors
           }
         },
         { status: 400 }

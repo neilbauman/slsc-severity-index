@@ -131,11 +131,19 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
       }
 
       if (!response.ok) {
-        throw new Error(data.error || 'Upload failed')
+        // Show detailed error information if available
+        const errorMsg = data.error || 'Upload failed'
+        const debugInfo = data.debug ? `\n\nDebug info: ${JSON.stringify(data.debug, null, 2)}` : ''
+        throw new Error(errorMsg + debugInfo)
       }
 
       const summary = data.summary || {}
       const totalCount = Object.values(summary).reduce((sum: number, count: any) => sum + count, 0)
+      
+      if (totalCount === 0) {
+        throw new Error('Upload completed but no boundaries were inserted. Check server logs for details.')
+      }
+      
       setProgress(`Successfully imported ${totalCount} boundaries across ${Object.keys(summary).length} admin levels!`)
       
       // Clean up: Delete the uploaded file from storage after processing
