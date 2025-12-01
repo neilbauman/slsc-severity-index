@@ -100,10 +100,10 @@ export default function UploadCoreDatasetPage() {
 
       setProgress('Dataset uploaded successfully!')
 
+      // Use window.location for a hard refresh to ensure data is loaded
       setTimeout(() => {
-        router.push(`/countries/${code}/core-datasets`)
-        router.refresh()
-      }, 1500)
+        window.location.href = `/countries/${code}/core-datasets`
+      }, 1000)
     } catch (err: any) {
       setError(err.message || 'Upload failed')
       setLoading(false)
