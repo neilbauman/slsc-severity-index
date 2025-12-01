@@ -67,7 +67,7 @@ export default function DatasetDetailPage() {
         const fileBuffer = await fileData.arrayBuffer()
         const workbook = XLSX.read(fileBuffer, { type: 'array' })
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
-        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { 
+        const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(firstSheet, { 
           raw: false,
           defval: null,
         })
@@ -77,7 +77,7 @@ export default function DatasetDetailPage() {
           sheetNames: workbook.SheetNames,
           rows: jsonData.slice(0, 100), // Preview first 100 rows
           totalRows: jsonData.length,
-          headers: jsonData.length > 0 ? Object.keys(jsonData[0]) : [],
+          headers: jsonData.length > 0 ? Object.keys(jsonData[0] as Record<string, any>) : [],
         })
       } else if (fileExtension === 'csv') {
         const text = await fileData.text()
