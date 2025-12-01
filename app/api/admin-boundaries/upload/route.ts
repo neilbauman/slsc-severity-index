@@ -24,6 +24,15 @@ export async function POST(request: Request) {
 
     // Create service role client for inserts (bypasses RLS)
     const { createClient: createSupabaseClient } = await import('@supabase/supabase-js')
+    
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('SUPABASE_SERVICE_ROLE_KEY is not set!')
+      return NextResponse.json(
+        { error: 'Server configuration error: Service role key not configured' },
+        { status: 500 }
+      )
+    }
+    
     const serviceRoleSupabase = createSupabaseClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -189,6 +198,14 @@ export async function POST(request: Request) {
     console.log('Detected admin levels:', Array.from(detectedLevels.entries()).map(([level, fields]) => 
       `Level ${level}: ${fields.nameField}${fields.pcodeField ? `, ${fields.pcodeField}` : ''}`
     ).join('; '))
+    
+    // Log total boundaries found
+    let totalBoundariesFound = 0
+    for (const [level, boundaries] of allBoundariesByLevel.entries()) {
+      totalBoundariesFound += boundaries.length
+      console.log(`Level ${level}: Found ${boundaries.length} boundaries`)
+    }
+    console.log(`Total boundaries to process: ${totalBoundariesFound}`)
 
     // Get current country config to check for existing pcode patterns
     const { data: country } = await supabase
@@ -302,8 +319,10 @@ export async function POST(request: Request) {
     }
 
     // Insert boundaries level by level, building hierarchy
+    console.log(`Starting boundary insertion for ${sortedLevels.length} admin levels`)
     for (const level of sortedLevels) {
       const boundaries = allBoundariesByLevel.get(level) || []
+      console.log(`Processing level ${level}: ${boundaries.length} boundaries to insert`)
       let insertedCount = 0
       const errors: string[] = []
 
@@ -448,11 +467,16 @@ export async function POST(request: Request) {
             return levelConfig
           })
           
-          // Save updated config
-          await supabase
+          // Save updated config (use service role to bypass RLS)
+          const { error: configError } = await serviceRoleSupabase
             .from('countries')
             .update({ config, updated_at: new Date().toISOString() })
             .eq('id', countryId)
+          
+          if (configError) {
+            console.error('Failed to update country config:', configError)
+            // Don't fail the whole upload if config update fails
+          }
         }
       }
     }
