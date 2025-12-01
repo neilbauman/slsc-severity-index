@@ -2,7 +2,6 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { AlertCircle, CheckCircle, Info, AlertTriangle } from 'lucide-react'
 
 interface QualityIssue {
   severity: 'error' | 'warning' | 'info'
@@ -52,13 +51,13 @@ export function QualityReport({ report }: QualityReportProps) {
   const getSeverityIcon = (severity: string) => {
     switch (severity) {
       case 'error':
-        return <AlertCircle className="h-4 w-4 text-red-600" />
+        return <span className="text-red-600 text-lg">⚠</span>
       case 'warning':
-        return <AlertTriangle className="h-4 w-4 text-yellow-600" />
+        return <span className="text-yellow-600 text-lg">⚠</span>
       case 'info':
-        return <Info className="h-4 w-4 text-blue-600" />
+        return <span className="text-blue-600 text-lg">ℹ</span>
       default:
-        return <Info className="h-4 w-4" />
+        return <span className="text-lg">ℹ</span>
     }
   }
 
@@ -199,7 +198,7 @@ export function QualityReport({ report }: QualityReportProps) {
             </div>
           ) : (
             <div className="flex items-center gap-2 p-4 bg-green-50 border border-green-200 rounded-lg">
-              <CheckCircle className="h-5 w-5 text-green-600" />
+              <span className="text-green-600 text-xl">✓</span>
               <div>
                 <div className="font-semibold text-green-900">
                   No issues found!
