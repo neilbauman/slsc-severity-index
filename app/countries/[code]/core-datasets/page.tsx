@@ -24,11 +24,16 @@ export default async function CoreDatasetsPage({
     notFound()
   }
 
-  const { data: datasets } = await supabase
+  const { data: datasets, error: datasetsError } = await supabase
     .from('datasets')
     .select('*, dataset_types(name)')
     .eq('country_id', country.id)
     .order('uploaded_at', { ascending: false })
+
+  // Log error if query fails (for debugging)
+  if (datasetsError) {
+    console.error('Error fetching datasets:', datasetsError)
+  }
 
   const {
     data: { user },
@@ -80,6 +85,16 @@ export default async function CoreDatasetsPage({
               <CardTitle>Datasets</CardTitle>
             </CardHeader>
             <CardContent>
+              {datasetsError && (
+                <div className="text-xs text-red-600 bg-red-50 p-3 rounded mb-4">
+                  Error loading datasets: {datasetsError.message}
+                  {datasetsError.message.includes('row-level security') && (
+                    <div className="mt-2">
+                      Please apply the RLS policies migration: migrations/add_datasets_rls_policies.sql
+                    </div>
+                  )}
+                </div>
+              )}
               {datasets && datasets.length > 0 ? (
                 <Table>
                   <TableHeader>
