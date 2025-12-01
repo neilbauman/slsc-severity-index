@@ -69,6 +69,12 @@ export default function UploadCoreDatasetPage() {
         })
 
       if (uploadError) {
+        // Provide more helpful error messages
+        if (uploadError.message.includes('Bucket not found') || uploadError.statusCode === 400) {
+          throw new Error(
+            'Storage bucket "datasets" not found. Please create it in Supabase Storage or run the migration: migrations/create_datasets_bucket.sql'
+          )
+        }
         throw new Error(`Failed to upload file: ${uploadError.message}`)
       }
 
