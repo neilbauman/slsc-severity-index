@@ -96,6 +96,12 @@ export async function analyzeDatasetQuality(
           })
           return row
         }).filter((r: any) => Object.keys(r).length > 0)
+      } else if (dataset.file_path.endsWith('.xlsx') || dataset.file_path.endsWith('.xls')) {
+        // Excel file processing
+        const { processExcelFile } = await import('./excel-processor')
+        const fileBuffer = await fileData.arrayBuffer()
+        const excelResult = await processExcelFile(fileBuffer)
+        data = excelResult.rows
       }
     }
   }

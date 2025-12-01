@@ -30,6 +30,7 @@
     "shapefile": "^0.6.6",
     "tailwind-merge": "^3.4.0",
     "turf": "^3.0.14",
+    "xlsx": "^0.18.5",
     "zod": "^4.1.13",
     "zustand": "^5.0.9"
   },

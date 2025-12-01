@@ -61,6 +61,9 @@ export async function POST(request: Request) {
       )
     }
 
+    // Note: Processing will be triggered manually or via a background job
+    // For now, datasets remain in 'processing' status until manually processed
+
     return NextResponse.json({
       success: true,
       dataset,
