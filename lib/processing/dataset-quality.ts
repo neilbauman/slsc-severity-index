@@ -91,7 +91,7 @@ export async function analyzeDatasetQuality(
         data = lines.slice(1).map((line: string) => {
           const values = line.split(',')
           const row: any = {}
-          headers.forEach((h, i) => {
+          headers.forEach((h: string, i: number) => {
             row[h.trim()] = values[i]?.trim() || null
           })
           return row
