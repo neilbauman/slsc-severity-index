@@ -3,6 +3,12 @@
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "framework": "nextjs",
-  "regions": ["iad1"]
+  "regions": ["iad1"],
+  "functions": {
+    "app/api/admin-boundaries/upload/route.ts": {
+      "maxDuration": 300,
+      "memory": 3008
+    }
+  }
 }
 

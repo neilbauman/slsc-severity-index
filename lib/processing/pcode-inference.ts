@@ -3,12 +3,12 @@ import { inferPcodePattern } from '@/lib/config/country-config'
 /**
  * Infer Pcode patterns for all admin levels from uploaded boundaries
  */
-export function inferPcodePatternsFromBoundaries(boundariesByLevel: Map<number, Array<{ pcode: string | null }>>): Map<number, string> {
+export function inferPcodePatternsFromBoundaries(boundariesByLevel: Map<number, Array<{ pcode: string | null; originalPcode?: string | null }>>): Map<number, string> {
   const patterns = new Map<number, string>()
   
   for (const [level, boundaries] of boundariesByLevel.entries()) {
     const pcodes = boundaries
-      .map(b => b.pcode)
+      .map(b => (b as any).originalPcode ?? b.pcode) // Use originalPcode if available, fallback to pcode
       .filter((p): p is string => p !== null && p !== undefined)
     
     if (pcodes.length > 0) {

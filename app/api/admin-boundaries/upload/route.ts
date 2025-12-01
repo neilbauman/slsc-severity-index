@@ -5,6 +5,11 @@ import { featureCollection } from '@turf/helpers'
 import * as shp from 'shapefile'
 import JSZip from 'jszip'
 import { inferPcodePatternsFromBoundaries } from '@/lib/processing/pcode-inference'
+import { validatePcode } from '@/lib/config/country-config'
+
+// Increase body size limit for large file uploads (50MB)
+export const maxDuration = 300 // 5 minutes for processing large files
+export const runtime = 'nodejs'
 
 export async function POST(request: Request) {
   try {
@@ -23,6 +28,8 @@ export async function POST(request: Request) {
     const autoDetect = formData.get('autoDetect') === 'true'
     const simplifyTolerance = parseFloat(formData.get('simplifyTolerance') as string) || 0.0001
     const hdxUrl = formData.get('hdxUrl') as string | null
+    const filePath = formData.get('filePath') as string | null
+    // Legacy support: also check for direct file upload (for smaller files)
     const file = formData.get('file') as File | null
 
     let geojson: any
@@ -33,7 +40,11 @@ export async function POST(request: Request) {
       // HDX API would need to be implemented properly
       // For now, we'll expect a direct GeoJSON URL or handle the HDX dataset page
       geojson = await fetchFromHDX(hdxUrl)
+    } else if (filePath) {
+      // Download file from Supabase Storage
+      geojson = await processFileFromStorage(supabase, filePath)
     } else if (file) {
+      // Legacy: direct file upload (for smaller files)
       geojson = await processFile(file)
     } else {
       return NextResponse.json({ error: 'No data source provided' }, { status: 400 })
@@ -76,6 +87,23 @@ export async function POST(request: Request) {
       )
     }
 
+    // Get current country config to check for existing pcode patterns
+    const { data: country } = await supabase
+      .from('countries')
+      .select('config')
+      .eq('id', countryId)
+      .single()
+    
+    const countryConfig = (country?.config as any) || {}
+    const existingPatterns = new Map<number, string>()
+    if (countryConfig.adminLevels) {
+      for (const levelConfig of countryConfig.adminLevels) {
+        if (levelConfig.pcodePattern) {
+          existingPatterns.set(levelConfig.level, levelConfig.pcodePattern)
+        }
+      }
+    }
+
     // Process each level
     const summary: Record<number, number> = {}
     const allBoundariesByLevel = new Map<number, any[]>()
@@ -105,10 +133,23 @@ export async function POST(request: Request) {
           ? (feature.properties?.[`ADM${parentLevel}_PCODE`] || null)
           : null
 
+        // Validate pcode against existing pattern if one exists
+        // We'll store the original pcode for pattern inference, but may need to set it to null for DB insertion
+        let validatedPcode = pcode
+        const existingPattern = existingPatterns.get(level)
+        if (pcode && existingPattern) {
+          if (!validatePcode(pcode, existingPattern)) {
+            // Pattern doesn't match - log warning but still try to insert
+            // The DB function will validate, so we'll handle the error there
+            console.warn(`Pcode "${pcode}" for ${name} (level ${level}) doesn't match pattern "${existingPattern}"`)
+          }
+        }
+
         boundaries.push({
           level,
           name,
-          pcode,
+          pcode: validatedPcode,
+          originalPcode: pcode, // Keep original for pattern inference
           parentPcode,
           geometry: geom, // Pass as object, not stringified
         })
@@ -156,9 +197,34 @@ export async function POST(request: Request) {
           })
           
           if (error) {
-            const errorMsg = `${boundary.name}: ${error.message}`
-            errors.push(errorMsg)
-            console.error(`Error inserting boundary ${boundary.name}:`, error.message, error.details, error.hint)
+            // If error is about pattern mismatch, try inserting without pcode
+            if (error.message?.toLowerCase().includes('pattern') && boundary.pcode) {
+              console.warn(`Pcode "${boundary.pcode}" for "${boundary.name}" doesn't match pattern. Retrying without pcode...`)
+              const { data: retryId, error: retryError } = await supabase.rpc('insert_admin_boundary', {
+                p_country_id: countryId,
+                p_level: boundary.level,
+                p_name: boundary.name,
+                p_pcode: null, // Insert without pcode
+                p_parent_id: parentId,
+                p_geometry: geom as any,
+              })
+              
+              if (retryError) {
+                const errorMsg = `${boundary.name}: ${retryError.message}`
+                errors.push(errorMsg)
+                console.error(`Error inserting boundary ${boundary.name} (retry):`, retryError.message, retryError.details, retryError.hint)
+              } else if (retryId) {
+                insertedCount++
+                // Still track the original pcode for pattern inference
+                if (boundary.pcode) {
+                  pcodeToIdMap.set(`${level}:${boundary.pcode}`, { level, id: retryId })
+                }
+              }
+            } else {
+              const errorMsg = `${boundary.name}: ${error.message}`
+              errors.push(errorMsg)
+              console.error(`Error inserting boundary ${boundary.name}:`, error.message, error.details, error.hint)
+            }
           } else if (insertedId) {
             insertedCount++
             if (boundary.pcode) {
@@ -243,6 +309,41 @@ async function fetchFromHDX(url: string): Promise<any> {
   throw new Error(
     'HDX direct integration coming soon. Please download the GeoJSON file and upload it directly, or provide a direct GeoJSON URL.'
   )
+}
+
+async function processFileFromStorage(supabase: any, filePath: string): Promise<any> {
+  // Download file from Supabase Storage
+  // Use service role client for server-side access
+  const { createClient } = await import('@supabase/supabase-js')
+  const serviceRoleClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    }
+  )
+
+  const { data: fileData, error: downloadError } = await serviceRoleClient.storage
+    .from('admin-boundaries')
+    .download(filePath)
+
+  if (downloadError) {
+    console.error('Storage download error:', downloadError)
+    throw new Error(`Failed to download file from storage: ${downloadError.message}. File path: ${filePath}`)
+  }
+
+  if (!fileData) {
+    throw new Error(`No file data returned from storage for path: ${filePath}`)
+  }
+
+  // Convert Blob to File-like object for processing
+  const fileName = filePath.split('/').pop() || 'file'
+  const file = new File([fileData], fileName, { type: fileData.type || 'application/octet-stream' })
+  
+  return processFile(file)
 }
 
 async function processFile(file: File): Promise<any> {
