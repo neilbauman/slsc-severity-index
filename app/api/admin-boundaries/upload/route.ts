@@ -510,23 +510,45 @@ export async function POST(request: Request) {
 
         // Find parent Pcode using detected field names
         let parentPcode: string | null = null
+        let parentName: string | null = null  // Also track parent name for fallback lookup
         if (parentLevel !== null) {
           const parentLevelConfig = detectedLevels.get(parentLevel)
           if (parentLevelConfig) {
             // Try the detected pcode field first
             parentPcode = feature.properties?.[parentLevelConfig.pcodeField] || null
+            
+            // Also get parent name for fallback lookup
+            parentName = feature.properties?.[parentLevelConfig.nameField] || null
+            
             // If not found, try alternative patterns
             if (!parentPcode) {
-              const altPatterns = [
+              const altPcodePatterns = [
+                `adm${parentLevel}_pcode`,    // Lowercase with underscore (Mozambique format)
                 `ADM${parentLevel}_PCODE`,
                 `ADM${parentLevel}_Pcode`,
                 `PCODE${parentLevel}`,
                 `pcode${parentLevel}`,
                 `ADM${parentLevel}_CODE`,
               ]
-              for (const pattern of altPatterns) {
+              for (const pattern of altPcodePatterns) {
                 if (feature.properties?.[pattern]) {
                   parentPcode = feature.properties[pattern]
+                  break
+                }
+              }
+            }
+            
+            // If parent name not found, try alternative name patterns
+            if (!parentName) {
+              const altNamePatterns = [
+                `adm${parentLevel}_name`,     // Lowercase with underscore (Mozambique format)
+                `ADM${parentLevel}_NAME`,
+                `ADM${parentLevel}_EN`,
+                `NAME_${parentLevel}`,
+              ]
+              for (const pattern of altNamePatterns) {
+                if (feature.properties?.[pattern]) {
+                  parentName = feature.properties[pattern]
                   break
                 }
               }
@@ -552,6 +574,7 @@ export async function POST(request: Request) {
           pcode: validatedPcode,
           originalPcode: pcode, // Keep original for pattern inference
           parentPcode,
+          parentName, // Store parent name for fallback lookup
           geometry: geom, // Pass as object, not stringified
         })
       }
@@ -625,6 +648,9 @@ export async function POST(request: Request) {
     console.log(`Total boundaries to process: ${totalBoundariesFound}`)
 
     // Insert boundaries level by level, building hierarchy
+    // Also build a name-to-id map for fallback parent lookup
+    const nameToIdMap = new Map<string, { level: number; id: string }>()
+    
     console.log(`Starting boundary insertion for ${sortedLevels.length} admin levels`)
     for (const level of sortedLevels) {
       const boundaries = allBoundariesByLevel.get(level) || []
@@ -635,10 +661,27 @@ export async function POST(request: Request) {
       for (const boundary of boundaries) {
         // Find parent ID if parent level exists
         let parentId = null
-        if (boundary.parentPcode && level > 0) {
-          const parentMapping = pcodeToIdMap.get(`${level - 1}:${boundary.parentPcode}`)
-          if (parentMapping) {
-            parentId = parentMapping.id
+        if (level > 0) {
+          // First try to find parent by pcode
+          if (boundary.parentPcode) {
+            const parentMapping = pcodeToIdMap.get(`${level - 1}:${boundary.parentPcode}`)
+            if (parentMapping) {
+              parentId = parentMapping.id
+            }
+          }
+          
+          // If pcode lookup failed, try to find parent by name (fallback)
+          if (!parentId && boundary.parentName) {
+            const parentNameMapping = nameToIdMap.get(`${level - 1}:${boundary.parentName}`)
+            if (parentNameMapping) {
+              parentId = parentNameMapping.id
+              console.log(`Found parent for "${boundary.name}" by name fallback: "${boundary.parentName}" (Level ${level - 1})`)
+            }
+          }
+          
+          // Log if we couldn't find a parent (this is OK - some boundaries might not have parents)
+          if (!parentId && level > 0) {
+            console.log(`No parent found for "${boundary.name}" (Level ${level}). Parent pcode: ${boundary.parentPcode || 'none'}, Parent name: ${boundary.parentName || 'none'}. Will insert without parent.`)
           }
         }
 
@@ -699,6 +742,8 @@ export async function POST(request: Request) {
                 if (boundary.pcode) {
                   pcodeToIdMap.set(`${level}:${boundary.pcode}`, { level, id: retryId })
                 }
+                // Also store in name-to-id map for fallback parent lookup
+                nameToIdMap.set(`${level}:${boundary.name}`, { level, id: retryId })
               }
           } else {
             const errorMsg = `${boundary.name}: ${error.message}`
@@ -723,6 +768,8 @@ export async function POST(request: Request) {
             if (boundary.pcode) {
               pcodeToIdMap.set(`${level}:${boundary.pcode}`, { level, id: insertedId })
             }
+            // Also store in name-to-id map for fallback parent lookup
+            nameToIdMap.set(`${level}:${boundary.name}`, { level, id: insertedId })
           } else {
             const errorMsg = `${boundary.name}: Function returned null (no ID returned)`
             errors.push(errorMsg)
