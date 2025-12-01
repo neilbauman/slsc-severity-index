@@ -4,6 +4,7 @@ import simplify from '@turf/simplify'
 import { featureCollection } from '@turf/helpers'
 import * as shp from 'shapefile'
 import JSZip from 'jszip'
+import { inferPcodePatternsFromBoundaries } from '@/lib/processing/pcode-inference'
 
 export async function POST(request: Request) {
   try {
@@ -151,7 +152,45 @@ export async function POST(request: Request) {
       summary[level] = insertedCount
     }
 
-    return NextResponse.json({ summary, success: true })
+    // Infer Pcode patterns from uploaded data and update country config
+    let inferredPatterns: Map<number, string> = new Map()
+    
+    if (allBoundariesByLevel.size > 0) {
+      inferredPatterns = inferPcodePatternsFromBoundaries(allBoundariesByLevel)
+      
+      // Get current country config
+      const { data: country } = await supabase
+        .from('countries')
+        .select('config')
+        .eq('id', countryId)
+        .single()
+      
+      if (country && country.config) {
+        const config = country.config as any
+        if (config.adminLevels) {
+          // Update patterns for each level
+          config.adminLevels = config.adminLevels.map((levelConfig: any) => {
+            const inferred = inferredPatterns.get(levelConfig.level)
+            if (inferred) {
+              return { ...levelConfig, pcodePattern: inferred }
+            }
+            return levelConfig
+          })
+          
+          // Save updated config
+          await supabase
+            .from('countries')
+            .update({ config, updated_at: new Date().toISOString() })
+            .eq('id', countryId)
+        }
+      }
+    }
+
+    return NextResponse.json({ 
+      summary, 
+      success: true,
+      patternsInferred: Array.from(inferredPatterns.entries())
+    })
   } catch (error: any) {
     console.error('Upload error:', error)
     return NextResponse.json(
@@ -176,20 +215,61 @@ async function fetchFromHDX(url: string): Promise<any> {
 
 async function processFile(file: File): Promise<any> {
   const fileName = file.name.toLowerCase()
+  const baseName = fileName.replace('.zip', '').replace('.shp', '')
 
   if (fileName.endsWith('.geojson') || fileName.endsWith('.json')) {
     const text = await file.text()
     return JSON.parse(text)
   } else if (fileName.endsWith('.zip')) {
-    // Handle shapefile
+    // Handle shapefile - look for common shapefile names in the zip
     const arrayBuffer = await file.arrayBuffer()
     const zip = await JSZip.loadAsync(arrayBuffer)
-    const shpBuffer = await zip.file(fileName.replace('.zip', '.shp'))?.async('arraybuffer')
-    const dbfBuffer = await zip.file(fileName.replace('.zip', '.dbf'))?.async('arraybuffer')
+    
+    // Try to find .shp and .dbf files - they might have various naming patterns
+    let shpFile: JSZip.JSZipObject | null = null
+    let dbfFile: JSZip.JSZipObject | null = null
+    
+    zip.forEach((relativePath, file) => {
+      const lowerPath = relativePath.toLowerCase()
+      if (lowerPath.endsWith('.shp')) {
+        shpFile = file
+      } else if (lowerPath.endsWith('.dbf')) {
+        dbfFile = file
+      }
+    })
 
-    if (!shpBuffer || !dbfBuffer) {
-      throw new Error('Shapefile is missing .shp or .dbf file')
+    // Also try to find files with the base name
+    if (!shpFile) {
+      shpFile = zip.file(`${baseName}.shp`) || zip.file(`phl_adm_psa_namria_20231106_SHP.shp`)
     }
+    if (!dbfFile) {
+      dbfFile = zip.file(`${baseName}.dbf`) || zip.file(`phl_adm_psa_namria_20231106_SHP.dbf`)
+    }
+
+    // Try common Philippines COD naming patterns
+    if (!shpFile || !dbfFile) {
+      zip.forEach((relativePath, file) => {
+        const lowerPath = relativePath.toLowerCase()
+        if (lowerPath.includes('adm') && lowerPath.endsWith('.shp') && !shpFile) {
+          shpFile = file
+        }
+        if (lowerPath.includes('adm') && lowerPath.endsWith('.dbf') && !dbfFile) {
+          dbfFile = file
+        }
+      })
+    }
+
+    if (!shpFile || !dbfFile) {
+      // List available files for debugging
+      const fileList = Object.keys(zip.files).filter(f => !zip.files[f].dir)
+      throw new Error(
+        `Shapefile is missing .shp or .dbf file. Found files: ${fileList.slice(0, 5).join(', ')}. ` +
+        `Please ensure your zip contains both .shp and .dbf files.`
+      )
+    }
+
+    const shpBuffer = await shpFile.async('arraybuffer')
+    const dbfBuffer = await dbfFile.async('arraybuffer')
 
     // Convert shapefile to GeoJSON
     const source = await shp.open(shpBuffer, dbfBuffer)
@@ -203,7 +283,7 @@ async function processFile(file: File): Promise<any> {
 
     return featureCollection(features)
   } else {
-    throw new Error('Unsupported file format. Use GeoJSON (.geojson) or Shapefile (.zip)')
+    throw new Error('Unsupported file format. Use GeoJSON (.geojson, .json) or Shapefile (.zip)')
   }
 }
 

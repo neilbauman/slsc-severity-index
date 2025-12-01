@@ -16,13 +16,13 @@ export function CountryForm() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [adminLevels, setAdminLevels] = useState([
-    { level: 0, name: '', pcodePattern: '' },
+    { level: 0, name: '' },
   ])
 
   const addAdminLevel = () => {
     setAdminLevels([
       ...adminLevels,
-      { level: adminLevels.length, name: '', pcodePattern: '' },
+      { level: adminLevels.length, name: '' },
     ])
   }
 
@@ -38,7 +38,7 @@ export function CountryForm() {
 
   const updateAdminLevel = (
     index: number,
-    field: 'name' | 'pcodePattern',
+    field: 'name',
     value: string
   ) => {
     const updated = [...adminLevels]
@@ -53,7 +53,6 @@ export function CountryForm() {
       PHILIPPINES_CONFIG.adminLevels.map((level) => ({
         level: level.level,
         name: level.name,
-        pcodePattern: level.pcodePattern,
       }))
     )
   }
@@ -95,7 +94,7 @@ export function CountryForm() {
       adminLevels: adminLevels.map((level) => ({
         level: level.level,
         name: level.name,
-        pcodePattern: level.pcodePattern,
+        // pcodePattern will be inferred after GIS upload
       })),
     }
 
@@ -195,6 +194,10 @@ export function CountryForm() {
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="bg-blue-50 p-3 rounded text-xs text-gray-700 mb-3">
+            <strong>Note:</strong> Pcode patterns will be automatically inferred after you upload
+            the GIS boundary files. You only need to specify the admin level names.
+          </div>
           {adminLevels.map((level, index) => (
             <div
               key={index}
@@ -228,24 +231,6 @@ export function CountryForm() {
                   size="sm"
                   required
                 />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">
-                  Pcode Pattern
-                  <span className="text-gray-400 ml-1">(optional, for validation)</span>
-                </label>
-                <Input
-                  value={level.pcodePattern}
-                  onChange={(e) =>
-                    updateAdminLevel(index, 'pcodePattern', e.target.value)
-                  }
-                  placeholder="e.g., ^[0-9]{2}$ or leave empty"
-                  size="sm"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Examples: <code className="bg-gray-100 px-1">^[0-9]{2}$</code> (2 digits),{' '}
-                  <code className="bg-gray-100 px-1">^PHL$</code> (exact match), or leave empty
-                </p>
               </div>
             </div>
           ))}

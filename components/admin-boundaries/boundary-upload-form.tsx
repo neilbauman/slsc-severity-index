@@ -17,6 +17,7 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
   const router = useRouter()
   const [uploadMethod, setUploadMethod] = useState<'hdx' | 'file'>('file')
   const [hdxUrl, setHdxUrl] = useState('https://data.humdata.org/dataset/cod-ab-phl')
+  const [fileInfo, setFileInfo] = useState<string>('')
   const [file, setFile] = useState<File | null>(null)
   const [processAllLevels, setProcessAllLevels] = useState(true)
   const [simplifyTolerance, setSimplifyTolerance] = useState(0.0001)
@@ -91,15 +92,16 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex items-center gap-2 cursor-pointer opacity-50">
               <input
                 type="radio"
                 name="method"
                 value="hdx"
                 checked={uploadMethod === 'hdx'}
                 onChange={(e) => setUploadMethod(e.target.value as 'hdx')}
+                disabled
               />
-              <span className="text-sm">From HDX Dataset</span>
+              <span className="text-sm">From HDX Dataset <span className="text-gray-400">(Coming soon)</span></span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -136,12 +138,28 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
               <Input
                 type="file"
                 accept=".geojson,.json,.zip,.shp"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                onChange={(e) => {
+                  const selectedFile = e.target.files?.[0] || null
+                  setFile(selectedFile)
+                  if (selectedFile) {
+                    const sizeMB = (selectedFile.size / 1024 / 1024).toFixed(1)
+                    setFileInfo(`${selectedFile.name} (${sizeMB} MB)`)
+                  } else {
+                    setFileInfo('')
+                  }
+                }}
                 required={uploadMethod === 'file'}
               />
               <p className="text-xs text-gray-500 mt-1">
-                Supported: GeoJSON (.geojson, .json) or Shapefile (.zip with .shp)
+                Supported: GeoJSON (.geojson, .json) or Shapefile (.zip with .shp, .dbf)
               </p>
+              {fileInfo && (
+                <p className="text-xs text-green-600 mt-1">✓ {fileInfo}</p>
+              )}
+              <div className="bg-blue-50 p-3 rounded text-xs text-gray-700 mt-2">
+                <strong>From HDX:</strong> Download the shapefile (SHP.zip) from the HDX page
+                and upload it here. The system will automatically extract and process it.
+              </div>
             </div>
           )}
         </CardContent>
