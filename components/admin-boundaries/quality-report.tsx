@@ -89,8 +89,9 @@ export function QualityReport({ report }: QualityReportProps) {
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600">Overall Score:</span>
               <Badge
-                variant="outline"
-                className={`text-lg font-bold ${getScoreColor(report.overallScore)}`}
+                variant="custom"
+                className={`text-lg font-bold border-2 ${getScoreColor(report.overallScore)}`}
+                style={{ borderColor: 'currentColor', backgroundColor: 'transparent' }}
               >
                 {report.overallScore}/100
               </Badge>
@@ -151,7 +152,7 @@ export function QualityReport({ report }: QualityReportProps) {
                       <div className="flex items-center gap-2 mb-2">
                         <h4 className="font-semibold">{issue.message}</h4>
                         {issue.autoFixable && (
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="secondary" className="text-xs">
                             Auto-fixable
                           </Badge>
                         )}
