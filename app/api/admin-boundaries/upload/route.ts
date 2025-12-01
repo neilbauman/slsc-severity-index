@@ -250,6 +250,16 @@ export async function POST(request: Request) {
     const summary: Record<number, number> = {}
     const allBoundariesByLevel = new Map<number, any[]>()
     const pcodeToIdMap = new Map<string, { level: number; id: string }>()
+    const extractionDiagnostics = new Map<number, {
+      featuresChecked: number
+      featuresWithName: number
+      featuresWithPcode: number
+      skippedNoName: number
+      skippedInvalidGeometry: number
+      processedCount: number
+      samplePropertyKeys: string[]
+      firstFeatureSample: any
+    }>()
 
     // Sort levels to process from highest (Adm0) to lowest
     const sortedLevels = Array.from(detectedLevels.keys()).sort((a, b) => a - b)
@@ -475,6 +485,25 @@ export async function POST(request: Request) {
       } else if (processedCount > 0) {
         console.log(`Level ${level}: WARNING - ${processedCount} features were processed but ${boundaries.length} boundaries were created. This may indicate a parent lookup issue.`)
       }
+      
+      // Store diagnostics for this level
+      extractionDiagnostics.set(level, {
+        featuresChecked: simplified.features.length,
+        featuresWithName,
+        featuresWithPcode,
+        skippedNoName,
+        skippedInvalidGeometry,
+        processedCount,
+        samplePropertyKeys: Array.from(allPropertyKeys).slice(0, 20),
+        firstFeatureSample: simplified.features.length > 0 ? {
+          properties: Object.fromEntries(
+            Object.entries(simplified.features[0].properties || {}).slice(0, 10)
+          ),
+          nameFieldValue: simplified.features[0].properties?.[nameField],
+          nameFieldValueCaseInsensitive: Object.keys(simplified.features[0].properties || {}).find(k => k.toLowerCase() === nameField.toLowerCase())
+        } : null
+      })
+      
       allBoundariesByLevel.set(level, boundaries)
     }
     
@@ -692,6 +721,12 @@ export async function POST(request: Request) {
               Array.from(allBoundariesByLevel.entries()).map(([level, boundaries]) => [
                 level,
                 { count: boundaries.length, sampleNames: boundaries.slice(0, 3).map(b => b.name) }
+              ])
+            ),
+            extractionDiagnostics: Object.fromEntries(
+              Array.from(extractionDiagnostics.entries()).map(([level, diag]) => [
+                level,
+                diag
               ])
             ),
             errors: allErrors
