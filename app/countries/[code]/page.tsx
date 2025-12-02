@@ -44,6 +44,73 @@ export default async function CountryDetailPage({
       </header>
 
       <main className="container mx-auto px-4 py-6">
+        {/* Quick Start Workflow */}
+        <Card className="mb-6 border-blue-200 bg-blue-50">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">🚀 Run SSC Calculations</CardTitle>
+              <Link href={`/countries/${code}/setup`}>
+                <Button variant="outline" size="sm">Setup Guide →</Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <p className="text-sm text-gray-700">
+                Follow these steps to upload your Excel file and calculate severity scores:
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Link href={`/countries/${code}/calculation-models`}>
+                  <Card className="hover:border-blue-500 transition cursor-pointer bg-white">
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="text-2xl">1️⃣</div>
+                        <div>
+                          <div className="font-medium text-sm mb-1">Import Calculation Model</div>
+                          <p className="text-xs text-gray-600">
+                            Upload your Excel calculation template to define how severity is calculated
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+                <Link href={`/countries/${code}/household-datasets`}>
+                  <Card className="hover:border-blue-500 transition cursor-pointer bg-white">
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="text-2xl">2️⃣</div>
+                        <div>
+                          <div className="font-medium text-sm mb-1">Upload Household Data</div>
+                          <p className="text-xs text-gray-600">
+                            Upload your household survey data (extract the "HH dataset" sheet from your Excel file)
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+                <Link href={`/countries/${code}/calculations/new`}>
+                  <Card className="hover:border-blue-500 transition cursor-pointer bg-white">
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="text-2xl">3️⃣</div>
+                        <div>
+                          <div className="font-medium text-sm mb-1">Run Calculation</div>
+                          <p className="text-xs text-gray-600">
+                            Select your model and dataset, then calculate pillar scores and severity
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* All Features */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <Link href={`/countries/${code}/admin-boundaries`}>
             <Card className="hover:border-blue-500 transition cursor-pointer">
@@ -104,7 +171,7 @@ export default async function CountryDetailPage({
               </CardHeader>
               <CardContent>
                 <p className="text-xs text-gray-600">
-                  Run severity calculations and PIN analysis
+                  View calculation history and results
                 </p>
               </CardContent>
             </Card>
