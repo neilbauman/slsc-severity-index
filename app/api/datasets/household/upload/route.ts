@@ -4,6 +4,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { processHouseholdExcel, processHouseholdCSV, validateHouseholdDataset } from '@/lib/processing/household-processor'
 
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
 /**
  * POST - Upload and process household dataset

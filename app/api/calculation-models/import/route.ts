@@ -4,6 +4,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { parseSSCTemplate, validateCalculationModelConfig } from '@/lib/processing/ssc-template-parser'
 
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
 /**
  * POST - Import calculation model from Excel template
