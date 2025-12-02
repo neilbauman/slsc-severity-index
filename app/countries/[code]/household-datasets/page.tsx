@@ -122,9 +122,15 @@ export default function HouseholdDatasetsPage() {
               <CardTitle>Upload Household Dataset</CardTitle>
             </CardHeader>
             <CardContent>
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                <strong>💡 What is this?</strong> This is your household survey data. From your Excel file, 
+                extract the "HH dataset" sheet (the one with all the household survey responses). 
+                <strong>Important:</strong> Make sure it has pcode columns (like "Admin1 P-Code" or "Admin2 P-Code") 
+                so households can be linked to administrative boundaries.
+              </div>
               <form onSubmit={handleUpload} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Dataset File</label>
+                  <label className="block text-sm font-medium mb-1">Dataset File *</label>
                   <Input
                     type="file"
                     name="file"
@@ -132,7 +138,8 @@ export default function HouseholdDatasetsPage() {
                     required
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Upload household-level survey data (Excel or CSV)
+                    Upload household-level survey data (Excel or CSV). This should be the "HH dataset" sheet 
+                    from your calculation template Excel file, exported as a separate file.
                   </p>
                 </div>
                 <div>

@@ -95,6 +95,12 @@ export default function MigrationsPage() {
             <CardTitle>Available Migrations</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+              <strong>💡 What are migrations?</strong> These are SQL scripts that create the database tables 
+              needed for the app. Think of it like setting up folders on your computer - you need the folders 
+              before you can put files in them. <strong>You only need to run "create_ssc_calculation_tables" once</strong> 
+              to set up the calculation features.
+            </div>
             <p className="text-xs text-gray-600 mb-4">
               Select a migration to view and execute its SQL. For security, migrations should be
               executed through your Supabase SQL Editor. You can copy the SQL and run it there.

@@ -133,10 +133,19 @@ export default function RunCalculationPage() {
             <CardTitle>Run New Calculation</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="mb-6 p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+              <strong>💡 What happens here?</strong> The system will:
+              <ol className="list-decimal list-inside mt-2 space-y-1 text-xs">
+                <li>Calculate <strong>Pillar 1</strong> scores (Shelter: safety, privacy, thermal comfort, tenure)</li>
+                <li>Calculate <strong>Pillar 2</strong> scores (NFI: cooking, storage, sleep, hygiene, electricity)</li>
+                <li>Calculate <strong>Pillar 3</strong> scores (Services: health, education, water, etc.)</li>
+                <li>Apply the <strong>decision tree</strong> to combine pillars into final severity (1-5)</li>
+                <li>Aggregate to <strong>administrative areas</strong> using the 20% rule</li>
+                <li>Calculate <strong>PIN (People in Need)</strong> figures by area</li>
+              </ol>
+            </div>
             <p className="text-xs text-gray-600 mb-6">
-              Run a severity calculation using a calculation model and household dataset.
-              This will calculate pillar scores, apply the decision tree, and aggregate
-              results to administrative levels.
+              Select your calculation model and household dataset below, then click "Run Calculation".
             </p>
 
             {loading ? (

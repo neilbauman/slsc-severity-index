@@ -122,9 +122,14 @@ export default function CalculationModelsPage() {
               <CardTitle>Import Calculation Model from Excel</CardTitle>
             </CardHeader>
             <CardContent>
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                <strong>💡 What is this?</strong> This extracts the calculation methodology from your Excel file. 
+                The system will read the "Core indicators", "Analysis grid", and "Decision-tree" sheets to understand 
+                how to calculate severity scores. You can upload your full Excel file (like the Mozambique one you shared).
+              </div>
               <form onSubmit={handleUpload} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Excel File</label>
+                  <label className="block text-sm font-medium mb-1">Excel File *</label>
                   <Input
                     type="file"
                     name="file"
@@ -132,7 +137,8 @@ export default function CalculationModelsPage() {
                     required
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Upload an SSC calculation template Excel file
+                    Upload an SSC calculation template Excel file (max 10MB). 
+                    If your file is larger, extract just the methodology sheets (Core indicators, Analysis grid, Decision-tree).
                   </p>
                 </div>
                 <div>
