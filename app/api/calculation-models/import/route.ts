@@ -52,6 +52,15 @@ export async function POST(request: Request) {
       )
     }
 
+    // Check file size (Vercel limit is ~4.5MB, but we'll allow up to 10MB)
+    const maxSize = 10 * 1024 * 1024 // 10MB
+    if (file.size > maxSize) {
+      return NextResponse.json(
+        { error: `File too large. Maximum size is ${maxSize / 1024 / 1024}MB. Your file is ${(file.size / 1024 / 1024).toFixed(2)}MB. Please compress the file or split it.` },
+        { status: 413 }
+      )
+    }
+
     // Validate file type
     const fileExtension = file.name.split('.').pop()?.toLowerCase()
     if (fileExtension !== 'xlsx' && fileExtension !== 'xls') {
