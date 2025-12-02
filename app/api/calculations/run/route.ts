@@ -144,7 +144,7 @@ export async function POST(request: Request) {
         household_dataset_id,
         model_config: {
           model: model.name,
-          version: model.version,
+          model_version: model.version,
           ...modelConfig,
         },
         status: 'running',
