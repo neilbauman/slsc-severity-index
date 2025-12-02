@@ -169,7 +169,7 @@ export async function POST(request: Request) {
       })
 
       // Update household records with calculated scores
-      const updates: Promise<any>[] = []
+      const updates: Promise<void>[] = []
       for (const householdSeverity of result.householdSeverities) {
         const householdRecord = householdRecords.find(
           r => (r.household_id && r.household_id === householdSeverity.household_id) ||
@@ -177,25 +177,24 @@ export async function POST(request: Request) {
         )
 
         if (householdRecord) {
-          updates.push(
-            serviceRoleSupabase
-              .from('household_records')
-              .update({
-                pillar1_score: householdSeverity.pillarScores.pillar1,
-                pillar2_score: householdSeverity.pillarScores.pillar2,
-                pillar3_score: householdSeverity.pillarScores.pillar3,
-                final_severity: householdSeverity.finalSeverity,
-                calculation_id: calculation.id,
-                calculated_at: new Date().toISOString(),
-              })
-              .eq('id', householdRecord.id)
-              .then(({ error }) => {
-                if (error) {
-                  console.error('Error updating household record:', error)
-                }
-                return null
-              })
-          )
+          const updatePromise = serviceRoleSupabase
+            .from('household_records')
+            .update({
+              pillar1_score: householdSeverity.pillarScores.pillar1,
+              pillar2_score: householdSeverity.pillarScores.pillar2,
+              pillar3_score: householdSeverity.pillarScores.pillar3,
+              final_severity: householdSeverity.finalSeverity,
+              calculation_id: calculation.id,
+              calculated_at: new Date().toISOString(),
+            })
+            .eq('id', householdRecord.id)
+            .then(({ error }) => {
+              if (error) {
+                console.error('Error updating household record:', error)
+              }
+            })
+          
+          updates.push(Promise.resolve(updatePromise))
         }
       }
 
