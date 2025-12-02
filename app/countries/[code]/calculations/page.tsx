@@ -49,7 +49,9 @@ export default async function CalculationsPage({
               Severity Calculations
             </h1>
             {user && (
-              <Button size="sm">Run Calculation</Button>
+              <Link href={`/countries/${code}/calculations/new`}>
+                <Button size="sm">Run Calculation</Button>
+              </Link>
             )}
           </div>
         </div>
@@ -114,7 +116,9 @@ export default async function CalculationsPage({
                   No calculations run yet
                 </p>
                 {user && (
-                  <Button size="sm">Run First Calculation</Button>
+                  <Link href={`/countries/${code}/calculations/new`}>
+                    <Button size="sm">Run First Calculation</Button>
+                  </Link>
                 )}
               </div>
             )}

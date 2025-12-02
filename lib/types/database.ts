@@ -157,10 +157,156 @@ export interface Database {
           created_at?: string
         }
       }
+      calculation_models: {
+        Row: {
+          id: string
+          name: string
+          version: string
+          description: string | null
+          country_id: string | null
+          model_config: Json
+          source_file_path: string | null
+          source_metadata: Json | null
+          is_active: boolean
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          version: string
+          description?: string | null
+          country_id?: string | null
+          model_config: Json
+          source_file_path?: string | null
+          source_metadata?: Json | null
+          is_active?: boolean
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          version?: string
+          description?: string | null
+          country_id?: string | null
+          model_config?: Json
+          source_file_path?: string | null
+          source_metadata?: Json | null
+          is_active?: boolean
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      household_datasets: {
+        Row: {
+          id: string
+          country_id: string
+          dataset_id: string | null
+          name: string
+          description: string | null
+          file_path: string | null
+          total_households: number
+          status: DatasetStatus
+          metadata: Json | null
+          processed_at: string | null
+          uploaded_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          country_id: string
+          dataset_id?: string | null
+          name: string
+          description?: string | null
+          file_path?: string | null
+          total_households?: number
+          status?: DatasetStatus
+          metadata?: Json | null
+          processed_at?: string | null
+          uploaded_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          country_id?: string
+          dataset_id?: string | null
+          name?: string
+          description?: string | null
+          file_path?: string | null
+          total_households?: number
+          status?: DatasetStatus
+          metadata?: Json | null
+          processed_at?: string | null
+          uploaded_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      household_records: {
+        Row: {
+          id: string
+          household_dataset_id: string
+          admin_boundary_id: string | null
+          pcode: string | null
+          household_id: string | null
+          survey_responses: Json
+          population_group: string | null
+          pillar1_score: number | null
+          pillar2_score: number | null
+          pillar3_score: number | null
+          final_severity: number | null
+          calculated_at: string | null
+          calculation_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          household_dataset_id: string
+          admin_boundary_id?: string | null
+          pcode?: string | null
+          household_id?: string | null
+          survey_responses: Json
+          population_group?: string | null
+          pillar1_score?: number | null
+          pillar2_score?: number | null
+          pillar3_score?: number | null
+          final_severity?: number | null
+          calculated_at?: string | null
+          calculation_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          household_dataset_id?: string
+          admin_boundary_id?: string | null
+          pcode?: string | null
+          household_id?: string | null
+          survey_responses?: Json
+          population_group?: string | null
+          pillar1_score?: number | null
+          pillar2_score?: number | null
+          pillar3_score?: number | null
+          final_severity?: number | null
+          calculated_at?: string | null
+          calculation_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
       severity_calculations: {
         Row: {
           id: string
           country_id: string
+          calculation_model_id: string | null
+          household_dataset_id: string | null
           model_config: Json
           results: Json | null
           status: CalculationStatus
@@ -170,6 +316,8 @@ export interface Database {
         Insert: {
           id?: string
           country_id: string
+          calculation_model_id?: string | null
+          household_dataset_id?: string | null
           model_config: Json
           results?: Json | null
           status?: CalculationStatus
@@ -179,6 +327,8 @@ export interface Database {
         Update: {
           id?: string
           country_id?: string
+          calculation_model_id?: string | null
+          household_dataset_id?: string | null
           model_config?: Json
           results?: Json | null
           status?: CalculationStatus
