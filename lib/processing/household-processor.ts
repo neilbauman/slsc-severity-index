@@ -199,7 +199,7 @@ export async function processHouseholdExcel(
 export async function processHouseholdCSV(
   csvText: string
 ): Promise<HouseholdProcessingResult> {
-  const csvResult = processCSVFile(csvText)
+  const csvResult = await processCSVFile(csvText)
 
   return processHouseholdData(csvResult.rows, csvResult.headers)
 }
