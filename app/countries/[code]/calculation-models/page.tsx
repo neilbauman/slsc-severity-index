@@ -82,7 +82,9 @@ export default function CalculationModelsPage() {
 
       alert('Calculation model imported successfully!')
       setShowUploadForm(false)
-      loadModels()
+      if (countryId) {
+        loadModels(countryId)
+      }
     } catch (error: any) {
       alert(`Error: ${error.message}`)
     } finally {
