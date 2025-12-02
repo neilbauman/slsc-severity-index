@@ -189,6 +189,12 @@ export async function POST(request: Request) {
                 calculated_at: new Date().toISOString(),
               })
               .eq('id', householdRecord.id)
+              .then(({ error }) => {
+                if (error) {
+                  console.error('Error updating household record:', error)
+                }
+                return null
+              })
           )
         }
       }
