@@ -7,6 +7,10 @@
     "app/api/datasets/household/upload/route.ts": {
       "maxDuration": 60,
       "memory": 3008
+    },
+    "app/api/admin-boundaries/upload/route.ts": {
+      "maxDuration": 300,
+      "memory": 3008
     }
   },
   "headers": [

@@ -52,44 +52,10 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
     try {
       if (uploadMethod === 'hdx') {
         setProgress('Fetching data from HDX...')
-      } else if (file) {
-        // Upload file to Supabase Storage first
-        setProgress('Uploading file to storage...')
-        const supabase = createClient()
-        
-        // Check if user is authenticated
-        const { data: { user: authUser } } = await supabase.auth.getUser()
-        if (!authUser) {
-          throw new Error('You must be logged in to upload files')
-        }
-        
-        // Generate unique file path
-        const timestamp = Date.now()
-        const fileName = `${countryCode}-${timestamp}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
-        filePath = `${countryCode}/${fileName}`
-
-        // Upload to Supabase Storage
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('admin-boundaries')
-          .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: false
-          })
-
-        if (uploadError) {
-          console.error('Storage upload error:', uploadError)
-          throw new Error(`Failed to upload file to storage: ${uploadError.message}. Please check that the 'admin-boundaries' bucket exists and you have permission to upload.`)
-        }
-
-        if (!uploadData) {
-          throw new Error('Upload completed but no data returned')
-        }
-
-        setProgress('File uploaded successfully. Processing COD file and detecting all admin levels...')
       }
 
-      // Now call the API route with the storage path
-      // IMPORTANT: Never send the file directly - always use Supabase Storage for file uploads
+      // For large files, upload directly to API route which will handle storage server-side
+      // This bypasses client-side Supabase Storage size limits
       const formData = new FormData()
       formData.append('countryId', countryId)
       formData.append('processAllLevels', processAllLevels.toString())
@@ -98,12 +64,12 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
       
       if (uploadMethod === 'hdx') {
         formData.append('hdxUrl', hdxUrl)
-      } else if (filePath) {
-        formData.append('filePath', filePath)
-        // Ensure we never send the file directly in the formData
-        // The file should already be in Supabase Storage
+      } else if (file) {
+        // Upload file directly to API route for large file support
+        setProgress('Uploading file (this may take a while for large files)...')
+        formData.append('file', file)
       } else {
-        throw new Error('No file path available. File upload to storage may have failed.')
+        throw new Error('Please select a file to upload')
       }
 
       const response = await fetch('/api/admin-boundaries/upload', {
@@ -153,22 +119,6 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
         setQualityReport(data.qualityReport)
       }
       
-      // Clean up: Delete the uploaded file from storage after processing
-      if (filePath) {
-        try {
-          const supabase = createClient()
-          const { error: deleteError } = await supabase.storage
-            .from('admin-boundaries')
-            .remove([filePath])
-          
-          if (deleteError) {
-            console.warn('Failed to cleanup storage file:', deleteError)
-          }
-        } catch (err) {
-          console.warn('Failed to cleanup storage file:', err)
-        }
-      }
-      
       setTimeout(() => {
         router.push(`/countries/${countryCode}/admin-boundaries`)
         router.refresh()
@@ -176,22 +126,6 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
     } catch (err: any) {
       setError(err.message || 'Upload failed')
       setLoading(false)
-      
-      // Clean up on error too
-      if (filePath) {
-        try {
-          const supabase = createClient()
-          const { error: deleteError } = await supabase.storage
-            .from('admin-boundaries')
-            .remove([filePath])
-          
-          if (deleteError) {
-            console.warn('Failed to cleanup storage file on error:', deleteError)
-          }
-        } catch (err) {
-          console.warn('Failed to cleanup storage file on error:', err)
-        }
-      }
     }
   }
 

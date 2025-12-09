@@ -8,9 +8,11 @@ import { inferPcodePatternsFromBoundaries } from '@/lib/processing/pcode-inferen
 import { validatePcode } from '@/lib/config/country-config'
 import { analyzeAdminBoundariesQuality } from '@/lib/processing/data-quality'
 
-// Increase body size limit for large file uploads (50MB)
+// Increase body size limit for large file uploads
 export const maxDuration = 300 // 5 minutes for processing large files
 export const runtime = 'nodejs'
+// Note: Vercel has a 4.5MB limit for serverless functions by default
+// For files larger than that, we'll need to handle them differently
 
 export async function POST(request: Request) {
   try {
@@ -52,23 +54,58 @@ export async function POST(request: Request) {
     const simplifyTolerance = parseFloat(formData.get('simplifyTolerance') as string) || 0.0001
     const hdxUrl = formData.get('hdxUrl') as string | null
     const filePath = formData.get('filePath') as string | null
-    // Legacy support: also check for direct file upload (for smaller files)
     const file = formData.get('file') as File | null
 
     let geojson: any
 
-    // Fetch or process file
-    if (hdxUrl) {
+    // For direct file uploads, first save to Supabase Storage server-side
+    // This bypasses client-side size limits and Vercel's 4.5MB body limit
+    if (file) {
+      // Upload to Supabase Storage first using service role client (can handle larger files)
+      const timestamp = Date.now()
+      const fileName = `${countryId}-${timestamp}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+      const tempFilePath = `temp/${fileName}`
+
+      const fileBuffer = await file.arrayBuffer()
+      
+      // Upload using service role client which can handle larger files
+      const { error: uploadError } = await serviceRoleSupabase.storage
+        .from('admin-boundaries')
+        .upload(tempFilePath, fileBuffer, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: file.type || 'application/octet-stream'
+        })
+
+      if (uploadError) {
+        console.error('Storage upload error:', uploadError)
+        return NextResponse.json(
+          { error: `Failed to upload file to storage: ${uploadError.message}` },
+          { status: 500 }
+        )
+      }
+
+      // Now process from storage
+      try {
+        geojson = await processFileFromStorage(serviceRoleSupabase, tempFilePath)
+        
+        // Clean up temp file
+        await serviceRoleSupabase.storage
+          .from('admin-boundaries')
+          .remove([tempFilePath])
+      } catch (processError: any) {
+        // Clean up temp file on error
+        await serviceRoleSupabase.storage
+          .from('admin-boundaries')
+          .remove([tempFilePath])
+        throw processError
+      }
+    } else if (hdxUrl) {
       // Fetch from HDX - this is a simplified version
-      // HDX API would need to be implemented properly
-      // For now, we'll expect a direct GeoJSON URL or handle the HDX dataset page
       geojson = await fetchFromHDX(hdxUrl)
     } else if (filePath) {
       // Download file from Supabase Storage
-      geojson = await processFileFromStorage(supabase, filePath)
-    } else if (file) {
-      // Legacy: direct file upload (for smaller files)
-      geojson = await processFile(file)
+      geojson = await processFileFromStorage(serviceRoleSupabase, filePath)
     } else {
       return NextResponse.json({ error: 'No data source provided' }, { status: 400 })
     }
@@ -977,20 +1014,8 @@ async function fetchFromHDX(url: string): Promise<any> {
 
 async function processFileFromStorage(supabase: any, filePath: string): Promise<any> {
   // Download file from Supabase Storage
-  // Use service role client for server-side access
-  const { createClient } = await import('@supabase/supabase-js')
-  const serviceRoleClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    }
-  )
-
-  const { data: fileData, error: downloadError } = await serviceRoleClient.storage
+  // supabase parameter should already be the service role client
+  const { data: fileData, error: downloadError } = await supabase.storage
     .from('admin-boundaries')
     .download(filePath)
 
