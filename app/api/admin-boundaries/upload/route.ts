@@ -14,7 +14,20 @@ export const runtime = 'nodejs'
 // Note: Vercel has a 4.5MB limit for serverless functions by default
 // For files larger than that, we'll need to handle them differently
 
+// Handle OPTIONS requests for CORS
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  })
+}
+
 export async function POST(request: Request) {
+  console.log('POST /api/admin-boundaries/upload called')
   try {
     const supabase = await createClient()
     const {
