@@ -10,6 +10,7 @@ const MIGRATIONS = [
   { name: 'add_dataset_versions', description: 'Add dataset versioning support' },
   { name: 'add_datasets_rls_policies', description: 'Add RLS policies for datasets' },
   { name: 'create_datasets_bucket', description: 'Create storage bucket for datasets' },
+  { name: 'create_admin_boundaries_bucket', description: 'Create storage bucket for admin-boundaries with 500MB file size limit' },
   { name: 'fix_user_country_permissions_recursion', description: 'Fix user country permissions recursion' },
 ]
 
