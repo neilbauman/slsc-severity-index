@@ -260,23 +260,49 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
                         return
                       }
                       
-                      if (geojsonFiles.length === 1) {
-                        // Single GeoJSON file - create a File object from it
-                        const geojsonFile = new File(
-                          [geojsonFiles[0].content],
-                          geojsonFiles[0].name.split('/').pop() || 'extracted.geojson',
-                          { type: 'application/geo+json' }
-                        )
-                        setFile(geojsonFile)
-                        const sizeMB = (geojsonFile.size / 1024 / 1024).toFixed(1)
-                        setFileInfo(`✓ Extracted: ${geojsonFile.name} (${sizeMB} MB) from ${selectedFile.name}`)
-                        setProgress('')
-                      } else {
-                        // Multiple files - let user choose or merge
-                        setError(`Found ${geojsonFiles.length} GeoJSON files in zip. Please extract and upload the main admin boundaries file directly.`)
+                      // Parse and merge all GeoJSON files (for multi-level admin boundaries)
+                      setProgress('Merging multiple admin level files...')
+                      const allFeatures: any[] = []
+                      let mergedSuccessfully = 0
+                      
+                      for (const file of geojsonFiles) {
+                        try {
+                          const geojson = JSON.parse(file.content)
+                          if (geojson.type === 'FeatureCollection' && geojson.features) {
+                            allFeatures.push(...geojson.features)
+                            mergedSuccessfully++
+                          } else if (geojson.type === 'Feature') {
+                            allFeatures.push(geojson)
+                            mergedSuccessfully++
+                          }
+                        } catch (err) {
+                          console.warn(`Failed to parse ${file.name}:`, err)
+                        }
+                      }
+                      
+                      if (allFeatures.length === 0) {
+                        setError(`No valid GeoJSON features found in zip. Please extract and upload the GeoJSON file manually.`)
                         setFile(null)
                         setProgress('')
+                        return
                       }
+                      
+                      // Create merged FeatureCollection
+                      const mergedGeoJSON = {
+                        type: 'FeatureCollection',
+                        features: allFeatures
+                      }
+                      
+                      // Create a File object from the merged GeoJSON
+                      const geojsonFile = new File(
+                        [JSON.stringify(mergedGeoJSON)],
+                        'merged_admin_boundaries.geojson',
+                        { type: 'application/geo+json' }
+                      )
+                      setFile(geojsonFile)
+                      const sizeMB = (geojsonFile.size / 1024 / 1024).toFixed(1)
+                      setFileInfo(`✓ Merged ${mergedSuccessfully} GeoJSON files (${allFeatures.length} features, ${sizeMB} MB) from ${selectedFile.name}`)
+                      setProgress('')
                     } catch (err: any) {
                       setError(`Failed to extract GeoJSON from zip: ${err.message}. Please extract the GeoJSON file manually and upload it directly.`)
                       setFile(null)
