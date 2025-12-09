@@ -12,6 +12,15 @@ import { analyzeAdminBoundariesQuality } from '@/lib/processing/data-quality'
 export const maxDuration = 300 // 5 minutes for processing large files
 export const runtime = 'nodejs'
 
+// Simple GET handler to verify route is working
+export async function GET() {
+  return NextResponse.json({ 
+    message: 'Upload route is accessible',
+    methods: ['POST', 'GET'],
+    timestamp: new Date().toISOString()
+  })
+}
+
 export async function POST(request: Request) {
   let errorContext = { step: 'initialization' }
   
@@ -1116,29 +1125,35 @@ async function processFileFromStorage(supabase: any, filePath: string): Promise<
   // supabase parameter should already be the service role client
   console.log('[API] processFileFromStorage: Starting download for', filePath)
   
-  const { data: fileData, error: downloadError } = await supabase.storage
-    .from('admin-boundaries')
-    .download(filePath)
+  try {
+    const { data: fileData, error: downloadError } = await supabase.storage
+      .from('admin-boundaries')
+      .download(filePath)
 
-  console.log('[API] processFileFromStorage: Download complete, error:', downloadError?.message || 'none')
+    console.log('[API] processFileFromStorage: Download complete, error:', downloadError?.message || 'none', 'hasData:', !!fileData)
 
-  if (downloadError) {
-    console.error('[API] Storage download error:', downloadError)
-    throw new Error(`Failed to download file from storage: ${downloadError.message}. File path: ${filePath}`)
+    if (downloadError) {
+      console.error('[API] Storage download error:', downloadError)
+      console.error('[API] Download error details:', JSON.stringify(downloadError, null, 2))
+      throw new Error(`Failed to download file from storage: ${downloadError.message}. File path: ${filePath}`)
+    }
+
+    if (!fileData) {
+      console.error('[API] No file data returned from storage')
+      throw new Error(`No file data returned from storage for path: ${filePath}`)
+    }
+
+    console.log('[API] processFileFromStorage: File data received, size:', fileData.size || 'unknown', 'type:', fileData.type || 'unknown')
+
+    // Convert Blob to File-like object for processing
+    const fileName = filePath.split('/').pop() || 'file'
+    const file = new File([fileData], fileName, { type: fileData.type || 'application/octet-stream' })
+    
+    return processFile(file)
+  } catch (storageError: any) {
+    console.error('[API] processFileFromStorage error:', storageError)
+    throw new Error(`Failed to process file from storage: ${storageError.message || storageError}`)
   }
-
-  if (!fileData) {
-    console.error('[API] No file data returned from storage')
-    throw new Error(`No file data returned from storage for path: ${filePath}`)
-  }
-
-  console.log('[API] processFileFromStorage: File data received, size:', fileData.size || 'unknown')
-
-  // Convert Blob to File-like object for processing
-  const fileName = filePath.split('/').pop() || 'file'
-  const file = new File([fileData], fileName, { type: fileData.type || 'application/octet-stream' })
-  
-  return processFile(file)
 }
 
 async function processFile(file: File): Promise<any> {
