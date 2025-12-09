@@ -11,22 +11,45 @@ import { analyzeAdminBoundariesQuality } from '@/lib/processing/data-quality'
 // Increase body size limit for large file uploads
 export const maxDuration = 300 // 5 minutes for processing large files
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic' // Prevent route caching
+export const fetchCache = 'force-no-store' // Don't cache fetch requests
 
 // Simple GET handler to verify route is working
 export async function GET() {
   return NextResponse.json({ 
     message: 'Upload route is accessible',
-    methods: ['POST', 'GET'],
+    methods: ['POST', 'GET', 'OPTIONS'],
     timestamp: new Date().toISOString(),
-    version: '2.0.1'
+    version: '2.0.2'
+  })
+}
+
+// OPTIONS handler for CORS preflight
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
   })
 }
 
 export async function POST(request: Request) {
+  // Verify this is actually a POST request
+  if (request.method !== 'POST') {
+    console.error('[API] Invalid method:', request.method)
+    return NextResponse.json(
+      { error: `Method ${request.method} not allowed. Only POST is supported.` },
+      { status: 405, headers: { 'Allow': 'POST' } }
+    )
+  }
+
   let errorContext = { step: 'initialization' }
   
   try {
-    // Immediately return to confirm handler is called
+    // Immediately log to confirm handler is called
     console.log('[API] ========== POST /api/admin-boundaries/upload called - START ==========')
     console.log('[API] Request method:', request.method)
     console.log('[API] Request URL:', request.url)
