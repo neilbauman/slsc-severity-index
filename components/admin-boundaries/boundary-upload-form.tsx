@@ -232,7 +232,7 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
               </label>
               <Input
                 type="file"
-                accept=".geojson,.json,.zip"
+                accept=".geojson,.json,.zip,application/geo+json,application/json,application/zip"
                 onChange={async (e) => {
                   // Reset states
                   setError(null)
