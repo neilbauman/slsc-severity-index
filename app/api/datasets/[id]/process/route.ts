@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { processExcelFile, validateExcelData } from '@/lib/processing/excel-processor'
 import { processCSVFile, validateCSVData } from '@/lib/processing/csv-processor'
+import { analyzeDatasetQuality } from '@/lib/processing/dataset-quality'
 
 export const runtime = 'nodejs'
 
@@ -106,28 +107,71 @@ export async function POST(
       )
     }
 
-    // Update dataset with processing results
-    const { error: updateError } = await serviceRoleSupabase
-      .from('datasets')
-      .update({
-        status: validationResult.valid ? 'complete' : 'error',
-        metadata: {
-          processingResult,
-          validationResult,
-          processedAt: new Date().toISOString(),
-        },
+    // Run data quality analysis (includes pcode matching against admin boundaries)
+    let qualityReport = null
+    try {
+      console.log('Running data quality analysis...')
+      qualityReport = await analyzeDatasetQuality(serviceRoleSupabase, id, processingResult.rows)
+      console.log(`Quality score: ${qualityReport.overallScore}/100, ${qualityReport.issues.length} issues found`)
+      
+      // Check if there are critical errors that should prevent completion
+      const hasErrors = qualityReport.issues.some(issue => issue.severity === 'error')
+      
+      // Update dataset with processing results and quality report
+      const { error: updateError } = await serviceRoleSupabase
+        .from('datasets')
+        .update({
+          status: validationResult.valid && !hasErrors ? 'complete' : 'error',
+          metadata: {
+            ...dataset.metadata,
+            processingResult,
+            validationResult,
+            qualityReport,
+            processedAt: new Date().toISOString(),
+          },
+        })
+        .eq('id', id)
+
+      if (updateError) {
+        console.error('Failed to update dataset:', updateError)
+      }
+
+      return NextResponse.json({
+        success: true,
+        processingResult,
+        validationResult,
+        qualityReport,
+        status: validationResult.valid && !hasErrors ? 'complete' : 'error',
       })
-      .eq('id', id)
+    } catch (qualityError: any) {
+      console.error('Error running quality analysis:', qualityError)
+      // Still update with processing results even if quality analysis fails
+      const { error: updateError } = await serviceRoleSupabase
+        .from('datasets')
+        .update({
+          status: validationResult.valid ? 'complete' : 'error',
+          metadata: {
+            ...dataset.metadata,
+            processingResult,
+            validationResult,
+            qualityError: qualityError.message,
+            processedAt: new Date().toISOString(),
+          },
+        })
+        .eq('id', id)
 
-    if (updateError) {
-      console.error('Failed to update dataset:', updateError)
+      if (updateError) {
+        console.error('Failed to update dataset:', updateError)
+      }
+
+      return NextResponse.json({
+        success: true,
+        processingResult,
+        validationResult,
+        qualityError: qualityError.message,
+        warning: 'Data quality analysis failed, but basic processing completed',
+      })
     }
-
-    return NextResponse.json({
-      success: true,
-      processingResult,
-      validationResult,
-    })
 
   } catch (error: any) {
     console.error('Dataset processing error:', error)

@@ -85,20 +85,19 @@ export async function analyzeDatasetQuality(
           data = json
         }
       } else if (dataset.file_path.endsWith('.csv')) {
-        // Use papaparse for proper CSV parsing (handles quoted fields, commas in quotes, etc.)
-        const Papa = await import('papaparse')
-        const parseResult = Papa.default.parse<Record<string, any>>(text, {
-          header: true,
-          skipEmptyLines: true,
-          transformHeader: (header: string) => header.trim(),
-          transform: (value: string) => value.trim() || null,
+        // Use the same CSV processor that applies filters (admin level, total population)
+        const { processCSVFile } = await import('./csv-processor')
+        const metadata = (dataset.metadata as any) || {}
+        const adminLevel = metadata.adminLevel !== undefined ? parseInt(String(metadata.adminLevel), 10) : undefined
+        const pcodeColumn = metadata.columns?.pcode
+        const filterTotalPopulationOnly = metadata.filterTotalPopulationOnly !== undefined ? metadata.filterTotalPopulationOnly : false
+        
+        const processedResult = await processCSVFile(text, {
+          filterAdminLevel: !isNaN(adminLevel || NaN) ? adminLevel : undefined,
+          pcodeColumn: pcodeColumn || undefined,
+          filterTotalPopulationOnly: filterTotalPopulationOnly,
         })
-
-        if (parseResult.errors && parseResult.errors.length > 0) {
-          console.warn('CSV parsing warnings:', parseResult.errors)
-        }
-
-        data = parseResult.data
+        data = processedResult.rows
       } else if (dataset.file_path.endsWith('.xlsx') || dataset.file_path.endsWith('.xls')) {
         // Excel file processing
         const { processExcelFile } = await import('./excel-processor')
@@ -323,7 +322,7 @@ export async function analyzeDatasetQuality(
       // Filter boundaries by admin level if specified
       let boundariesQuery = supabase
         .from('admin_boundaries')
-        .select('pcode, level')
+        .select('pcode, level, name')
         .eq('country_id', country.id)
         .not('pcode', 'is', null)
 
@@ -336,6 +335,16 @@ export async function analyzeDatasetQuality(
 
       if (boundaries && boundaries.length > 0) {
         const validPcodes = new Set(boundaries.map((b: any) => b.pcode))
+        const validPcodesMap = new Map(boundaries.map((b: any) => [b.pcode, b.name]))
+        
+        // Get dataset pcodes
+        const datasetPcodes = new Set(
+          data
+            .filter(row => row[pcodeField])
+            .map(row => row[pcodeField])
+        )
+
+        // Check for unmatched pcodes in dataset (pcodes in dataset that don't exist in boundaries)
         const unmatchedPcodes = data.filter(
           (row) => row[pcodeField] && !validPcodes.has(row[pcodeField])
         )
@@ -356,6 +365,37 @@ export async function analyzeDatasetQuality(
           })
           recommendations.push(`Review ${unmatchedPcodes.length} unmatched pcodes`)
         }
+
+        // Check for missing pcodes in dataset (boundaries that don't have data in dataset)
+        const missingBoundaries = boundaries.filter(
+          (b: any) => !datasetPcodes.has(b.pcode)
+        )
+
+        if (missingBoundaries.length > 0 && adminLevel !== null) {
+          issues.push({
+            severity: 'info',
+            type: 'missing_boundary_data',
+            message: `${missingBoundaries.length} administrative boundaries at ADM${adminLevel} level don't have corresponding data in this dataset`,
+            affectedCount: missingBoundaries.length,
+            affectedRows: missingBoundaries.slice(0, 20).map((b: any) => ({
+              pcode: b.pcode,
+              name: b.name,
+            })),
+            recommendation: `Consider adding data for these administrative boundaries to ensure complete coverage.`,
+            autoFixable: false,
+          })
+        }
+      } else if (adminLevel !== null) {
+        // No boundaries found at the specified level
+        issues.push({
+          severity: 'warning',
+          type: 'no_boundaries_at_level',
+          message: `No administrative boundaries found at ADM${adminLevel} level for this country`,
+          affectedCount: 0,
+          affectedRows: [],
+          recommendation: `Upload administrative boundaries at level ${adminLevel} before processing this dataset, or verify the admin level setting is correct.`,
+          autoFixable: false,
+        })
       }
     }
   }

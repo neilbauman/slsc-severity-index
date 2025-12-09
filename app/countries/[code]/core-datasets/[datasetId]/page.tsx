@@ -198,7 +198,24 @@ export default function DatasetDetailPage() {
         throw new Error(data.error || 'Processing failed')
       }
 
-      alert('Processing completed! Check the quality report.')
+      // Show quality report summary if available
+      if (data.qualityReport) {
+        const report = data.qualityReport
+        const unmatchedCount = report.issues.find((i: any) => i.type === 'unmatched_pcode')?.affectedCount || 0
+        const missingCount = report.issues.find((i: any) => i.type === 'missing_boundary_data')?.affectedCount || 0
+        
+        let message = `Processing completed!\n\nQuality Score: ${report.overallScore}/100\n`
+        if (unmatchedCount > 0) {
+          message += `⚠️ ${unmatchedCount} pcodes don't match admin boundaries\n`
+        }
+        if (missingCount > 0) {
+          message += `ℹ️ ${missingCount} admin boundaries don't have data\n`
+        }
+        message += `\nClick "View Quality Report" to see details.`
+        alert(message)
+      } else {
+        alert('Processing completed!')
+      }
       await loadDataset() // Reload to show updated status
     } catch (err: any) {
       setError(err.message)
