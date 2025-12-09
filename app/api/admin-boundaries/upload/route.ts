@@ -13,22 +13,28 @@ export const maxDuration = 300 // 5 minutes for processing large files
 export const runtime = 'nodejs'
 
 export async function POST(request: Request) {
-  console.log('[API] POST /api/admin-boundaries/upload called')
   try {
+    console.log('[API] POST /api/admin-boundaries/upload called - START')
+    
     const supabase = await createClient()
+    console.log('[API] Supabase client created')
+    
     const {
       data: { user },
     } = await supabase.auth.getUser()
+    console.log('[API] Auth check complete, user:', user?.id ? 'authenticated' : 'not authenticated')
 
     if (!user) {
+      console.log('[API] Returning 401 - Unauthorized')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Create service role client for inserts (bypasses RLS)
     const { createClient: createSupabaseClient } = await import('@supabase/supabase-js')
+    console.log('[API] Imported Supabase client')
     
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error('SUPABASE_SERVICE_ROLE_KEY is not set!')
+      console.error('[API] SUPABASE_SERVICE_ROLE_KEY is not set!')
       return NextResponse.json(
         { error: 'Server configuration error: Service role key not configured' },
         { status: 500 }
@@ -46,7 +52,10 @@ export async function POST(request: Request) {
       }
     )
 
+    console.log('[API] Parsing formData...')
     const formData = await request.formData()
+    console.log('[API] FormData parsed successfully')
+    
     const countryId = formData.get('countryId') as string
     const processAllLevels = formData.get('processAllLevels') === 'true'
     const autoDetect = formData.get('autoDetect') === 'true'
@@ -55,7 +64,7 @@ export async function POST(request: Request) {
     const filePath = formData.get('filePath') as string | null
     const file = formData.get('file') as File | null
 
-    console.log('Upload route - received formData:', {
+    console.log('[API] FormData values:', {
       countryId,
       processAllLevels,
       autoDetect,
