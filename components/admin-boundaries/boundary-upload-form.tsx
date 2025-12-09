@@ -53,38 +53,43 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
       if (uploadMethod === 'hdx') {
         setProgress('Fetching data from HDX...')
       } else if (file) {
-        // For large files, use signed URL to upload directly to Supabase Storage
-        // This bypasses both client SDK limits and Vercel's 4.5MB body size limit
-        setProgress('Getting upload URL...')
-        
-        // Get signed upload URL from our API
-        const urlResponse = await fetch(
-          `/api/admin-boundaries/get-upload-url?country_id=${countryId}&file_name=${encodeURIComponent(file.name)}`
-        )
-        
-        if (!urlResponse.ok) {
-          const urlError = await urlResponse.json()
-          throw new Error(urlError.error || 'Failed to get upload URL')
-        }
-        
-        const { uploadUrl, path: uploadedPath } = await urlResponse.json()
-        filePath = uploadedPath
-        
-        // Upload file directly to Supabase Storage using signed URL
+        // Upload directly to Supabase Storage using client SDK
+        // Now that bucket limit is 500MB, this should work for files up to that size
         setProgress('Uploading file to storage (this may take a while for large files)...')
-        const uploadResponse = await fetch(uploadUrl, {
-          method: 'PUT',
-          body: file,
-          headers: {
-            'Content-Type': file.type || 'application/octet-stream',
-          }
-        })
+        const supabase = createClient()
         
-        if (!uploadResponse.ok) {
-          const errorText = await uploadResponse.text()
-          throw new Error(`Failed to upload file to storage: ${uploadResponse.status} ${errorText}`)
+        // Check if user is authenticated
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        if (!authUser) {
+          throw new Error('You must be logged in to upload files')
         }
         
+        // Generate unique file path using country code
+        const timestamp = Date.now()
+        const fileName = `${countryCode}-${timestamp}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+        filePath = `${countryCode}/${fileName}`
+
+        // Upload to Supabase Storage
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('admin-boundaries')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          })
+
+        if (uploadError) {
+          console.error('Storage upload error:', uploadError)
+          // Provide more helpful error message
+          if (uploadError.message?.includes('maximum allowed size')) {
+            throw new Error(`File size (${(file.size / 1024 / 1024).toFixed(1)} MB) exceeds the maximum allowed size. The admin-boundaries bucket has a 500MB limit. Please compress your file or contact support to increase the limit.`)
+          }
+          throw new Error(`Failed to upload file to storage: ${uploadError.message}. Please check that the 'admin-boundaries' bucket exists and you have permission to upload.`)
+        }
+
+        if (!uploadData) {
+          throw new Error('Upload completed but no data returned')
+        }
+
         setProgress('File uploaded successfully. Processing boundaries...')
       }
 

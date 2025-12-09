@@ -18,19 +18,20 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
     const countryId = searchParams.get('country_id')
+    const countryCode = searchParams.get('country_code')
     const fileName = searchParams.get('file_name')
 
-    if (!countryId || !fileName) {
+    if (!countryId || !countryCode || !fileName) {
       return NextResponse.json(
-        { error: 'country_id and file_name parameters are required' },
+        { error: 'country_id, country_code, and file_name parameters are required' },
         { status: 400 }
       )
     }
 
-    // Generate unique file path
+    // Generate unique file path using country code (not UUID)
     const timestamp = Date.now()
     const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const filePath = `${countryId}/${timestamp}-${safeFileName}`
+    const filePath = `${countryCode}/${timestamp}-${safeFileName}`
 
     // Create signed URL for upload (valid for 1 hour)
     const { data, error } = await supabase.storage
