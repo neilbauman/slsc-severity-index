@@ -79,11 +79,19 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
 
         if (uploadError) {
           console.error('Storage upload error:', uploadError)
+          console.error('File size:', (file.size / 1024 / 1024).toFixed(1), 'MB')
+          
           // Provide more helpful error message
-          if (uploadError.message?.includes('maximum allowed size')) {
-            throw new Error(`File size (${(file.size / 1024 / 1024).toFixed(1)} MB) exceeds the maximum allowed size. The admin-boundaries bucket has a 500MB limit. Please compress your file or contact support to increase the limit.`)
+          if (uploadError.message?.includes('maximum allowed size') || uploadError.message?.includes('exceeded')) {
+            throw new Error(`File size (${(file.size / 1024 / 1024).toFixed(1)} MB) exceeds the maximum allowed size. The admin-boundaries bucket limit is 5GB. This might be a Supabase global project limit. Check your Supabase dashboard Settings > Storage for project-level limits.`)
           }
-          throw new Error(`Failed to upload file to storage: ${uploadError.message}. Please check that the 'admin-boundaries' bucket exists and you have permission to upload.`)
+          
+          // Handle 413 Payload Too Large errors
+          if (uploadError.statusCode === 413 || uploadError.message?.includes('413')) {
+            throw new Error(`File size (${(file.size / 1024 / 1024).toFixed(1)} MB) is too large. The admin-boundaries bucket is configured for 5GB, but there may be a project-level limit. Please check your Supabase project settings.`)
+          }
+          
+          throw new Error(`Failed to upload file to storage: ${uploadError.message || uploadError.statusCode || 'Unknown error'}. Please check that the 'admin-boundaries' bucket exists and you have permission to upload.`)
         }
 
         if (!uploadData) {
