@@ -17,7 +17,8 @@ export async function GET() {
   return NextResponse.json({ 
     message: 'Upload route is accessible',
     methods: ['POST', 'GET'],
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    version: '2.0.1'
   })
 }
 
