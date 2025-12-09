@@ -234,10 +234,20 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
                 type="file"
                 accept=".geojson,.json,.zip"
                 onChange={async (e) => {
+                  // Reset states
+                  setError(null)
+                  setProgress('')
+                  
                   const selectedFile = e.target.files?.[0] || null
                   
+                  // If no file selected, don't do anything (user might have cancelled or is navigating)
+                  if (!selectedFile) {
+                    setFileInfo('')
+                    return
+                  }
+                  
                   // If user selected a zip file, extract GeoJSON client-side
-                  if (selectedFile && selectedFile.name.toLowerCase().endsWith('.zip')) {
+                  if (selectedFile.name.toLowerCase().endsWith('.zip')) {
                     setProgress('Extracting GeoJSON from zip file...')
                     try {
                       const JSZip = (await import('jszip')).default
