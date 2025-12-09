@@ -52,10 +52,43 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
     try {
       if (uploadMethod === 'hdx') {
         setProgress('Fetching data from HDX...')
+      } else if (file) {
+        // For large files, use signed URL to upload directly to Supabase Storage
+        // This bypasses both client SDK limits and Vercel's 4.5MB body size limit
+        setProgress('Getting upload URL...')
+        
+        // Get signed upload URL from our API
+        const urlResponse = await fetch(
+          `/api/admin-boundaries/get-upload-url?country_id=${countryId}&file_name=${encodeURIComponent(file.name)}`
+        )
+        
+        if (!urlResponse.ok) {
+          const urlError = await urlResponse.json()
+          throw new Error(urlError.error || 'Failed to get upload URL')
+        }
+        
+        const { uploadUrl, path: uploadedPath } = await urlResponse.json()
+        filePath = uploadedPath
+        
+        // Upload file directly to Supabase Storage using signed URL
+        setProgress('Uploading file to storage (this may take a while for large files)...')
+        const uploadResponse = await fetch(uploadUrl, {
+          method: 'PUT',
+          body: file,
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+          }
+        })
+        
+        if (!uploadResponse.ok) {
+          const errorText = await uploadResponse.text()
+          throw new Error(`Failed to upload file to storage: ${uploadResponse.status} ${errorText}`)
+        }
+        
+        setProgress('File uploaded successfully. Processing boundaries...')
       }
 
-      // For large files, upload directly to API route which will handle storage server-side
-      // This bypasses client-side Supabase Storage size limits
+      // Now call the API route to process the file from storage
       const formData = new FormData()
       formData.append('countryId', countryId)
       formData.append('processAllLevels', processAllLevels.toString())
@@ -64,12 +97,10 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
       
       if (uploadMethod === 'hdx') {
         formData.append('hdxUrl', hdxUrl)
-      } else if (file) {
-        // Upload file directly to API route for large file support
-        setProgress('Uploading file (this may take a while for large files)...')
-        formData.append('file', file)
+      } else if (filePath) {
+        formData.append('filePath', filePath)
       } else {
-        throw new Error('Please select a file to upload')
+        throw new Error('No file path available. File upload may have failed.')
       }
 
       const response = await fetch('/api/admin-boundaries/upload', {
