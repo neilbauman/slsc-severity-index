@@ -94,17 +94,65 @@ export default function DatasetDetailPage() {
           console.warn('CSV parsing warnings:', parseResult.errors)
         }
 
-        const rows = parseResult.data.slice(0, 100) // Preview first 100 rows
         const headers = parseResult.meta.fields || []
+        let rows = parseResult.data
+
+        // Apply the same filters that will be applied during processing
+        const metadata = (dataset.metadata as any) || {}
+        const adminLevel = metadata.adminLevel !== undefined ? parseInt(String(metadata.adminLevel), 10) : undefined
+        const filterTotalPopulationOnly = metadata.filterTotalPopulationOnly !== undefined ? metadata.filterTotalPopulationOnly : false
+
+        // Filter by admin level if configured
+        if (!isNaN(adminLevel || NaN)) {
+          const adminLevelColumn = headers.find(h => 
+            h.toLowerCase() === 'admin_level' || 
+            h.toLowerCase() === 'adminlevel' ||
+            (h.toLowerCase().includes('admin') && h.toLowerCase().includes('level'))
+          )
+          
+          if (adminLevelColumn) {
+            rows = rows.filter(row => {
+              const rowLevel = row[adminLevelColumn]
+              if (rowLevel === null || rowLevel === undefined || rowLevel === '') {
+                return false
+              }
+              const levelNum = parseInt(String(rowLevel), 10)
+              return !isNaN(levelNum) && levelNum === adminLevel
+            })
+          }
+        }
+
+        // Filter to total population only if configured
+        if (filterTotalPopulationOnly) {
+          const genderColumn = headers.find(h => 
+            h.toLowerCase() === 'gender' || h.toLowerCase() === 'sex'
+          )
+          const ageRangeColumn = headers.find(h => 
+            h.toLowerCase() === 'age_range' || 
+            h.toLowerCase() === 'agerange' ||
+            (h.toLowerCase().includes('age') && h.toLowerCase().includes('range'))
+          )
+
+          if (genderColumn && ageRangeColumn) {
+            rows = rows.filter(row => {
+              const gender = String(row[genderColumn] || '').toLowerCase().trim()
+              const ageRange = String(row[ageRangeColumn] || '').toLowerCase().trim()
+              return gender === 'all' && ageRange === 'all'
+            })
+          }
+        }
 
         if (rows.length === 0) {
-          throw new Error('CSV file appears to be empty or has no valid data rows')
+          throw new Error('CSV file appears to be empty or has no valid data rows after applying filters')
         }
+
+        // Preview first 100 filtered rows
+        const previewRows = rows.slice(0, 100)
 
         setPreviewData({
           type: 'csv',
-          rows,
-          totalRows: parseResult.data.length,
+          rows: previewRows,
+          totalRows: rows.length, // Show count of filtered rows
           headers,
         })
       } else if (fileExtension === 'json' || fileExtension === 'geojson') {
