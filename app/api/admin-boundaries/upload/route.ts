@@ -26,7 +26,12 @@ export async function POST(request: Request) {
   let errorContext = { step: 'initialization' }
   
   try {
-    console.log('[API] POST /api/admin-boundaries/upload called - START')
+    // Immediately return to confirm handler is called
+    console.log('[API] ========== POST /api/admin-boundaries/upload called - START ==========')
+    console.log('[API] Request method:', request.method)
+    console.log('[API] Request URL:', request.url)
+    console.log('[API] Request headers:', Object.fromEntries(request.headers.entries()))
+    
     errorContext.step = 'auth'
     
     const supabase = await createClient()
@@ -202,13 +207,17 @@ export async function POST(request: Request) {
         )
       }
     } else {
-      console.log('[API] No data source provided')
+      console.log('[API] No data source provided - returning 400')
       return NextResponse.json({ error: 'No data source provided' }, { status: 400 })
     }
 
+    console.log('[API] GeoJSON loaded, checking validity...')
     if (!geojson || !geojson.features) {
+      console.log('[API] Invalid GeoJSON - no features found')
       return NextResponse.json({ error: 'Invalid GeoJSON data' }, { status: 400 })
     }
+    
+    console.log('[API] GeoJSON valid, features count:', geojson.features.length)
 
     // Simplify geometries
     const simplified = simplify(geojson, { tolerance: simplifyTolerance, highQuality: true })
