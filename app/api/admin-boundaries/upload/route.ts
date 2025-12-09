@@ -69,6 +69,15 @@ export async function POST(request: Request) {
     const filePath = formData.get('filePath') as string | null
     const file = formData.get('file') as File | null
 
+    console.log('Upload route - received formData:', {
+      countryId,
+      processAllLevels,
+      autoDetect,
+      hdxUrl: !!hdxUrl,
+      filePath,
+      hasFile: !!file,
+    })
+
     let geojson: any
 
     // For direct file uploads, first save to Supabase Storage server-side
