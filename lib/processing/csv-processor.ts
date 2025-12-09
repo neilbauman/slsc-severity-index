@@ -29,12 +29,14 @@ export interface CSVProcessingResult {
  * @param options - Optional processing options
  * @param options.filterAdminLevel - If provided, filter rows to only this admin level
  * @param options.pcodeColumn - Override pcode column detection with specific column name
+ * @param options.filterTotalPopulationOnly - If true, filter to only rows with gender='all' and age_range='all' (for population datasets)
  */
 export async function processCSVFile(
   fileText: string,
   options?: {
     filterAdminLevel?: number
     pcodeColumn?: string
+    filterTotalPopulationOnly?: boolean
   }
 ): Promise<CSVProcessingResult> {
   const parseResult = Papa.parse<Record<string, any>>(fileText, {
@@ -74,6 +76,28 @@ export async function processCSVFile(
         const levelNum = parseInt(String(rowLevel), 10)
         return !isNaN(levelNum) && levelNum === options.filterAdminLevel
       })
+    }
+  }
+
+  // Filter to total population only (gender='all' and age_range='all') if requested
+  if (options?.filterTotalPopulationOnly) {
+    const genderColumn = headers.find(h => 
+      h.toLowerCase() === 'gender' || h.toLowerCase() === 'sex'
+    )
+    const ageRangeColumn = headers.find(h => 
+      h.toLowerCase() === 'age_range' || 
+      h.toLowerCase() === 'agerange' ||
+      (h.toLowerCase().includes('age') && h.toLowerCase().includes('range'))
+    )
+
+    if (genderColumn && ageRangeColumn) {
+      rows = rows.filter(row => {
+        const gender = String(row[genderColumn] || '').toLowerCase().trim()
+        const ageRange = String(row[ageRangeColumn] || '').toLowerCase().trim()
+        return gender === 'all' && ageRange === 'all'
+      })
+    } else {
+      console.warn('filterTotalPopulationOnly requested but gender or age_range columns not found')
     }
   }
 

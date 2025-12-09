@@ -28,6 +28,8 @@ export default function UploadCoreDatasetPage() {
   const [availableAdminLevels, setAvailableAdminLevels] = useState<Array<{ level: number; name: string }>>([])
   const [pcodeColumn, setPcodeColumn] = useState<string>('')
   const [populationColumn, setPopulationColumn] = useState<string>('')
+  const [filterTotalPopulationOnly, setFilterTotalPopulationOnly] = useState<boolean>(true)
+  const [hasGenderAgeColumns, setHasGenderAgeColumns] = useState<boolean>(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<string>('')
@@ -55,7 +57,7 @@ export default function UploadCoreDatasetPage() {
     fetchAdminLevels()
   }, [code])
 
-  const loadPreview = async (file: File, filterLevel?: number) => {
+  const loadPreview = async (file: File, filterLevel?: number, filterTotal?: boolean) => {
     try {
       const fileExtension = file.name.split('.').pop()?.toLowerCase()
       let headers: string[] = []
@@ -194,6 +196,35 @@ export default function UploadCoreDatasetPage() {
         }
       })
 
+      // Check if file has gender and age_range columns (HDX HAPI format)
+      const hasGenderColumn = headers.some(h => 
+        h.toLowerCase() === 'gender' || h.toLowerCase() === 'sex'
+      )
+      const hasAgeRangeColumn = headers.some(h => 
+        h.toLowerCase() === 'age_range' || 
+        h.toLowerCase() === 'agerange' ||
+        (h.toLowerCase().includes('age') && h.toLowerCase().includes('range'))
+      )
+      setHasGenderAgeColumns(hasGenderColumn && hasAgeRangeColumn)
+
+      // If we have gender/age columns and filter is enabled, filter preview data
+      const shouldFilterTotal = filterTotal !== undefined ? filterTotal : filterTotalPopulationOnly
+      if (hasGenderColumn && hasAgeRangeColumn && shouldFilterTotal) {
+        const genderCol = headers.find(h => h.toLowerCase() === 'gender' || h.toLowerCase() === 'sex')!
+        const ageRangeCol = headers.find(h => 
+          h.toLowerCase() === 'age_range' || 
+          h.toLowerCase() === 'agerange' ||
+          (h.toLowerCase().includes('age') && h.toLowerCase().includes('range'))
+        )!
+
+        rows = rows.filter(row => {
+          const gender = String(row[genderCol] || '').toLowerCase().trim()
+          const ageRange = String(row[ageRangeCol] || '').toLowerCase().trim()
+          return gender === 'all' && ageRange === 'all'
+        })
+        totalRows = rows.length
+      }
+
       setPcodeColumn(detectedPcode)
       setPopulationColumn(detectedPopulation)
       
@@ -220,7 +251,7 @@ export default function UploadCoreDatasetPage() {
         const nameWithoutExt = selectedFile.name.replace(/\.[^/.]+$/, '')
         setDatasetName(nameWithoutExt)
       }
-      await loadPreview(selectedFile, adminLevel)
+      await loadPreview(selectedFile, adminLevel, filterTotalPopulationOnly)
     }
   }
 
@@ -228,7 +259,15 @@ export default function UploadCoreDatasetPage() {
   const handleAdminLevelChange = async (newLevel: number) => {
     setAdminLevel(newLevel)
     if (file) {
-      await loadPreview(file, newLevel)
+      await loadPreview(file, newLevel, filterTotalPopulationOnly)
+    }
+  }
+
+  // Reload preview when total population filter changes
+  const handleFilterTotalPopulationChange = async (value: boolean) => {
+    setFilterTotalPopulationOnly(value)
+    if (file) {
+      await loadPreview(file, adminLevel, value)
     }
   }
 
@@ -337,6 +376,7 @@ export default function UploadCoreDatasetPage() {
               pcode: pcodeColumn,
               population: populationColumn,
             },
+            filterTotalPopulationOnly: hasGenderAgeColumns ? filterTotalPopulationOnly : undefined,
           },
         }),
       })
@@ -451,11 +491,30 @@ export default function UploadCoreDatasetPage() {
                       Column containing population values
                     </p>
                   </div>
+
+                  {hasGenderAgeColumns && (
+                    <div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={filterTotalPopulationOnly}
+                          onChange={(e) => handleFilterTotalPopulationChange(e.target.checked)}
+                          className="rounded border-gray-300"
+                        />
+                        <span className="text-xs font-medium text-gray-700">
+                          Filter to total population only (gender='all', age_range='all')
+                        </span>
+                      </label>
+                      <p className="text-xs text-gray-500 mt-1 ml-6">
+                        Check this to import only total population rows, excluding demographic breakdowns
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-2">
-                    Data Preview ({previewData.totalRows} total rows)
+                    Data Preview ({previewData.totalRows} total rows{hasGenderAgeColumns && filterTotalPopulationOnly ? ' after filtering' : ''})
                   </label>
                   <div className="overflow-x-auto border border-gray-200 rounded-md max-h-96">
                     <table className="min-w-full text-xs">

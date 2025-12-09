@@ -86,9 +86,17 @@ export async function POST(
       const adminLevel = metadata.adminLevel !== undefined ? parseInt(String(metadata.adminLevel), 10) : undefined
       const pcodeColumn = metadata.columns?.pcode
       
+      // Check if we should filter to total population only (from metadata or auto-detect)
+      const shouldFilterTotalPopulation = metadata.filterTotalPopulationOnly !== undefined
+        ? metadata.filterTotalPopulationOnly
+        : (dataset.name.toLowerCase().includes('population') ||
+           dataset.name.toLowerCase().includes('pop') ||
+           (metadata.columns && metadata.columns.population))
+
       processingResult = await processCSVFile(fileText, {
         filterAdminLevel: !isNaN(adminLevel || NaN) ? adminLevel : undefined,
         pcodeColumn: pcodeColumn || undefined,
+        filterTotalPopulationOnly: shouldFilterTotalPopulation,
       })
       validationResult = validateCSVData(processingResult)
     } else {
