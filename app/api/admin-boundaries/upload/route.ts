@@ -119,11 +119,27 @@ export async function POST(request: Request) {
       }
     } else if (hdxUrl) {
       // Fetch from HDX - this is a simplified version
+      console.log('[API] Fetching from HDX:', hdxUrl)
       geojson = await fetchFromHDX(hdxUrl)
     } else if (filePath) {
       // Download file from Supabase Storage
-      geojson = await processFileFromStorage(serviceRoleSupabase, filePath)
+      console.log('[API] Processing file from storage:', filePath)
+      try {
+        geojson = await processFileFromStorage(serviceRoleSupabase, filePath)
+        console.log('[API] File processed successfully, features:', geojson?.features?.length || 0)
+      } catch (storageError: any) {
+        console.error('[API] Error processing file from storage:', storageError)
+        return NextResponse.json(
+          { 
+            error: `Failed to process file from storage: ${storageError.message}`,
+            filePath,
+            details: process.env.NODE_ENV === 'development' ? storageError.stack : undefined
+          },
+          { status: 500 }
+        )
+      }
     } else {
+      console.log('[API] No data source provided')
       return NextResponse.json({ error: 'No data source provided' }, { status: 400 })
     }
 
@@ -1036,18 +1052,25 @@ async function fetchFromHDX(url: string): Promise<any> {
 async function processFileFromStorage(supabase: any, filePath: string): Promise<any> {
   // Download file from Supabase Storage
   // supabase parameter should already be the service role client
+  console.log('[API] processFileFromStorage: Starting download for', filePath)
+  
   const { data: fileData, error: downloadError } = await supabase.storage
     .from('admin-boundaries')
     .download(filePath)
 
+  console.log('[API] processFileFromStorage: Download complete, error:', downloadError?.message || 'none')
+
   if (downloadError) {
-    console.error('Storage download error:', downloadError)
+    console.error('[API] Storage download error:', downloadError)
     throw new Error(`Failed to download file from storage: ${downloadError.message}. File path: ${filePath}`)
   }
 
   if (!fileData) {
+    console.error('[API] No file data returned from storage')
     throw new Error(`No file data returned from storage for path: ${filePath}`)
   }
+
+  console.log('[API] processFileFromStorage: File data received, size:', fileData.size || 'unknown')
 
   // Convert Blob to File-like object for processing
   const fileName = filePath.split('/').pop() || 'file'
