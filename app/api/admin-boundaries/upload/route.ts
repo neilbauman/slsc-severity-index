@@ -124,6 +124,20 @@ export async function POST(request: Request) {
     const hdxUrl = formData.get('hdxUrl') as string | null
     const filePath = formData.get('filePath') as string | null
     const file = formData.get('file') as File | null
+    
+    // Get original filename for level detection
+    const originalFileName = file?.name || filePath?.split('/').pop() || 'unknown'
+    
+    // Detect admin level from filename (e.g., lka_admin0.geojson = level 0)
+    const levelFromFilename = (() => {
+      const match = originalFileName.match(/admin(\d+)/i)
+      if (match) {
+        const detectedLevel = parseInt(match[1], 10)
+        console.log('[API] Detected admin level from filename:', detectedLevel, 'from', originalFileName)
+        return detectedLevel
+      }
+      return null
+    })()
 
     console.log('[API] FormData values:', {
       countryId,
@@ -131,6 +145,8 @@ export async function POST(request: Request) {
       autoDetect,
       hdxUrl: !!hdxUrl,
       filePath,
+      originalFileName,
+      levelFromFilename,
       hasFile: !!file,
     })
     
@@ -271,10 +287,13 @@ export async function POST(request: Request) {
     // Find all ADM level fields with flexible naming patterns
     const detectedLevels = new Map<number, { nameField: string; pcodeField: string }>()
     
-    // If we detected a level from filename and it's a single-level file, process only that level
-    const levelsToCheck = levelFromFilename !== null && !processAllLevels 
+    // If we detected a level from filename and not processing all levels, focus on that level
+    // This helps when uploading individual admin level files
+    const levelsToCheck = (levelFromFilename !== null && !processAllLevels)
       ? [levelFromFilename] 
       : Array.from({ length: 7 }, (_, i) => i) // Check levels 0-6
+    
+    console.log('[API] Processing levels:', Array.from(levelsToCheck), 'levelFromFilename:', levelFromFilename, 'processAllLevels:', processAllLevels)
     
     if (autoDetect) {
       // Try multiple naming patterns for each admin level
