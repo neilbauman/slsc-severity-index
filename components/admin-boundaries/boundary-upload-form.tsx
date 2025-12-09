@@ -232,34 +232,87 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
               </label>
               <Input
                 type="file"
-                accept=".geojson,.json,.zip,.shp"
-                onChange={(e) => {
+                accept=".geojson,.json"
+                onChange={async (e) => {
                   const selectedFile = e.target.files?.[0] || null
-                  setFile(selectedFile)
-                  if (selectedFile) {
-                    const sizeMB = (selectedFile.size / 1024 / 1024).toFixed(1)
-                    const sizeMBNum = parseFloat(sizeMB)
-                    setFileInfo(`${selectedFile.name} (${sizeMB} MB)`)
-                    if (sizeMBNum > 100) {
-                      setError(null) // Clear any previous errors
-                      setProgress(`Very large file detected (${sizeMB} MB). Upload and processing may take several minutes...`)
-                    } else if (sizeMBNum > 30) {
-                      setError(null) // Clear any previous errors
-                      setProgress(`Large file detected (${sizeMB} MB). Upload may take a few minutes...`)
-                    } else {
-                      setError(null)
+                  
+                  // If user selected a zip file, extract GeoJSON client-side
+                  if (selectedFile && selectedFile.name.toLowerCase().endsWith('.zip')) {
+                    setProgress('Extracting GeoJSON from zip file...')
+                    try {
+                      const JSZip = (await import('jszip')).default
+                      const arrayBuffer = await selectedFile.arrayBuffer()
+                      const zip = await JSZip.loadAsync(arrayBuffer)
+                      
+                      // Find GeoJSON files in zip
+                      const geojsonFiles: Array<{ name: string; content: string }> = []
+                      for (const [path, file] of Object.entries(zip.files)) {
+                        if (!file.dir && (path.toLowerCase().endsWith('.geojson') || path.toLowerCase().endsWith('.json'))) {
+                          const content = await file.async('string')
+                          geojsonFiles.push({ name: path, content })
+                        }
+                      }
+                      
+                      if (geojsonFiles.length === 0) {
+                        setError('No GeoJSON files found in zip. Please extract the GeoJSON file manually and upload it directly.')
+                        setFile(null)
+                        setProgress('')
+                        return
+                      }
+                      
+                      if (geojsonFiles.length === 1) {
+                        // Single GeoJSON file - create a File object from it
+                        const geojsonFile = new File(
+                          [geojsonFiles[0].content],
+                          geojsonFiles[0].name.split('/').pop() || 'extracted.geojson',
+                          { type: 'application/geo+json' }
+                        )
+                        setFile(geojsonFile)
+                        const sizeMB = (geojsonFile.size / 1024 / 1024).toFixed(1)
+                        setFileInfo(`✓ Extracted: ${geojsonFile.name} (${sizeMB} MB) from ${selectedFile.name}`)
+                        setProgress('')
+                      } else {
+                        // Multiple files - let user choose or merge
+                        setError(`Found ${geojsonFiles.length} GeoJSON files in zip. Please extract and upload the main admin boundaries file directly.`)
+                        setFile(null)
+                        setProgress('')
+                      }
+                    } catch (err: any) {
+                      setError(`Failed to extract GeoJSON from zip: ${err.message}. Please extract the GeoJSON file manually and upload it directly.`)
+                      setFile(null)
                       setProgress('')
                     }
                   } else {
-                    setFileInfo('')
-                    setProgress('')
+                    // Direct GeoJSON file
+                    setFile(selectedFile)
+                    if (selectedFile) {
+                      const sizeMB = (selectedFile.size / 1024 / 1024).toFixed(1)
+                      const sizeMBNum = parseFloat(sizeMB)
+                      setFileInfo(`${selectedFile.name} (${sizeMB} MB)`)
+                      if (sizeMBNum > 100) {
+                        setError(null)
+                        setProgress(`Very large file detected (${sizeMB} MB). Upload and processing may take several minutes...`)
+                      } else if (sizeMBNum > 30) {
+                        setError(null)
+                        setProgress(`Large file detected (${sizeMB} MB). Upload may take a few minutes...`)
+                      } else {
+                        setError(null)
+                        setProgress('')
+                      }
+                    } else {
+                      setFileInfo('')
+                      setProgress('')
+                    }
                   }
                 }}
                 required={uploadMethod === 'file'}
               />
               <p className="text-xs text-gray-500 mt-1">
-                Supported: GeoJSON (.geojson, .json) or Shapefile (.zip with .shp, .dbf). GeoJSON files can also be in a .zip archive. Files are uploaded to Supabase Storage (no size limit).
+                <strong>Supported:</strong> GeoJSON (.geojson, .json). If you have a .zip file, the system will automatically extract the GeoJSON from it before uploading.
               </p>
+              <div className="bg-blue-50 p-3 rounded text-xs text-gray-700 mt-2">
+                <strong>Tip:</strong> For large zip files, extracting the GeoJSON client-side reduces upload time and processing complexity.
+              </div>
               {fileInfo && (
                 <p className="text-xs text-green-600 mt-1">✓ {fileInfo}</p>
               )}
