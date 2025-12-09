@@ -148,8 +148,11 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
       if (!response.ok) {
         // Show detailed error information if available
         const errorMsg = data.error || 'Upload failed'
+        const step = data.step ? `\n\nFailed at step: ${data.step}` : ''
+        const details = data.details ? `\n\nDetails: ${data.details}` : ''
+        const errorType = data.errorType ? `\n\nError type: ${data.errorType}` : ''
         const debugInfo = data.debug ? `\n\nDebug info: ${JSON.stringify(data.debug, null, 2)}` : ''
-        throw new Error(errorMsg + debugInfo)
+        throw new Error(errorMsg + step + errorType + details + debugInfo)
       }
 
       const summary = data.summary || {}

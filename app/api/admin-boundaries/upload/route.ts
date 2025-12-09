@@ -13,15 +13,28 @@ export const maxDuration = 300 // 5 minutes for processing large files
 export const runtime = 'nodejs'
 
 export async function POST(request: Request) {
+  let errorContext = { step: 'initialization' }
+  
   try {
     console.log('[API] POST /api/admin-boundaries/upload called - START')
+    errorContext.step = 'auth'
     
     const supabase = await createClient()
     console.log('[API] Supabase client created')
     
     const {
       data: { user },
+      error: authError,
     } = await supabase.auth.getUser()
+    
+    if (authError) {
+      console.error('[API] Auth error:', authError)
+      return NextResponse.json(
+        { error: 'Authentication failed', details: authError.message },
+        { status: 401 }
+      )
+    }
+    
     console.log('[API] Auth check complete, user:', user?.id ? 'authenticated' : 'not authenticated')
 
     if (!user) {
@@ -29,9 +42,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    errorContext.step = 'service_role_setup'
+    
     // Create service role client for inserts (bypasses RLS)
-    const { createClient: createSupabaseClient } = await import('@supabase/supabase-js')
-    console.log('[API] Imported Supabase client')
+    let createSupabaseClient
+    try {
+      const module = await import('@supabase/supabase-js')
+      createSupabaseClient = module.createClient
+      console.log('[API] Imported Supabase client')
+    } catch (importError: any) {
+      console.error('[API] Failed to import Supabase client:', importError)
+      return NextResponse.json(
+        { error: 'Failed to load Supabase client', details: importError.message },
+        { status: 500 }
+      )
+    }
     
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
       console.error('[API] SUPABASE_SERVICE_ROLE_KEY is not set!')
@@ -41,20 +66,41 @@ export async function POST(request: Request) {
       )
     }
     
-    const serviceRoleSupabase = createSupabaseClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
+    let serviceRoleSupabase
+    try {
+      serviceRoleSupabase = createSupabaseClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false
+          }
         }
-      }
-    )
+      )
+      console.log('[API] Service role client created')
+    } catch (clientError: any) {
+      console.error('[API] Failed to create service role client:', clientError)
+      return NextResponse.json(
+        { error: 'Failed to create service role client', details: clientError.message },
+        { status: 500 }
+      )
+    }
 
-    console.log('[API] Parsing formData...')
-    const formData = await request.formData()
-    console.log('[API] FormData parsed successfully')
+    errorContext.step = 'parsing_formdata'
+    
+    let formData
+    try {
+      console.log('[API] Parsing formData...')
+      formData = await request.formData()
+      console.log('[API] FormData parsed successfully')
+    } catch (parseError: any) {
+      console.error('[API] Failed to parse formData:', parseError)
+      return NextResponse.json(
+        { error: 'Failed to parse form data', details: parseError.message, step: errorContext.step },
+        { status: 400 }
+      )
+    }
     
     const countryId = formData.get('countryId') as string
     const processAllLevels = formData.get('processAllLevels') === 'true'
@@ -72,6 +118,13 @@ export async function POST(request: Request) {
       filePath,
       hasFile: !!file,
     })
+    
+    if (!countryId) {
+      return NextResponse.json(
+        { error: 'countryId is required' },
+        { status: 400 }
+      )
+    }
 
     let geojson: any
 
@@ -1024,12 +1077,21 @@ export async function POST(request: Request) {
       qualityReport
     })
   } catch (error: any) {
+    console.error('[API] Upload error at step:', errorContext.step)
     console.error('[API] Upload error:', error)
+    console.error('[API] Error name:', error?.name)
+    console.error('[API] Error message:', error?.message)
     console.error('[API] Error stack:', error?.stack)
+    
+    // Return detailed error information
     return NextResponse.json(
       { 
         error: error.message || 'Upload failed',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        step: errorContext.step,
+        errorType: error?.name || 'UnknownError',
+        details: error?.message,
+        stack: process.env.NODE_ENV === 'development' ? error?.stack : undefined,
+        timestamp: new Date().toISOString()
       },
       { status: 500 }
     )
