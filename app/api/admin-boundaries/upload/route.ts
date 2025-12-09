@@ -271,9 +271,14 @@ export async function POST(request: Request) {
     // Find all ADM level fields with flexible naming patterns
     const detectedLevels = new Map<number, { nameField: string; pcodeField: string }>()
     
-    if (autoDetect && processAllLevels) {
+    // If we detected a level from filename and it's a single-level file, process only that level
+    const levelsToCheck = levelFromFilename !== null && !processAllLevels 
+      ? [levelFromFilename] 
+      : Array.from({ length: 7 }, (_, i) => i) // Check levels 0-6
+    
+    if (autoDetect) {
       // Try multiple naming patterns for each admin level
-      for (let level = 0; level <= 6; level++) {
+      for (const level of levelsToCheck) {
         // Try various field name patterns
         // Check Mozambique patterns first (more specific)
         const namePatterns = [

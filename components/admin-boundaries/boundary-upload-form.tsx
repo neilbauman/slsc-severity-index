@@ -334,10 +334,10 @@ export function BoundaryUploadForm({ countryId, countryCode, config }: BoundaryU
                 required={uploadMethod === 'file'}
               />
               <p className="text-xs text-gray-500 mt-1">
-                <strong>Supported:</strong> GeoJSON (.geojson, .json). If you have a .zip file, the system will automatically extract the GeoJSON from it before uploading.
+                <strong>Supported:</strong> GeoJSON (.geojson, .json). If you have a .zip file, the system will automatically extract and merge GeoJSON files from it.
               </p>
               <div className="bg-blue-50 p-3 rounded text-xs text-gray-700 mt-2">
-                <strong>Tip:</strong> For large zip files, extracting the GeoJSON client-side reduces upload time and processing complexity.
+                <strong>Recommended for large files:</strong> Upload individual admin level files separately (e.g., lka_admin0.geojson, lka_admin1.geojson). The system will detect the level from the filename and process it individually. This is more reliable for files over 100MB.
               </div>
               {fileInfo && (
                 <p className="text-xs text-green-600 mt-1">✓ {fileInfo}</p>
