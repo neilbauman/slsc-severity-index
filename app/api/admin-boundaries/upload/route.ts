@@ -11,23 +11,9 @@ import { analyzeAdminBoundariesQuality } from '@/lib/processing/data-quality'
 // Increase body size limit for large file uploads
 export const maxDuration = 300 // 5 minutes for processing large files
 export const runtime = 'nodejs'
-// Note: Vercel has a 4.5MB limit for serverless functions by default
-// For files larger than that, we'll need to handle them differently
-
-// Handle OPTIONS requests for CORS
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
-  })
-}
 
 export async function POST(request: Request) {
-  console.log('POST /api/admin-boundaries/upload called')
+  console.log('[API] POST /api/admin-boundaries/upload called')
   try {
     const supabase = await createClient()
     const {
@@ -1013,9 +999,13 @@ export async function POST(request: Request) {
       qualityReport
     })
   } catch (error: any) {
-    console.error('Upload error:', error)
+    console.error('[API] Upload error:', error)
+    console.error('[API] Error stack:', error?.stack)
     return NextResponse.json(
-      { error: error.message || 'Upload failed' },
+      { 
+        error: error.message || 'Upload failed',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      },
       { status: 500 }
     )
   }
