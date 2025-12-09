@@ -21,10 +21,10 @@
     "clsx": "^2.1.1",
     "jszip": "^3.10.1",
     "leaflet": "^1.9.4",
-    "next": "16.0.5",
+    "next": "^16.0.8",
     "papaparse": "^5.5.3",
-    "react": "19.2.0",
-    "react-dom": "19.2.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
     "react-leaflet": "^5.0.0",
     "recharts": "^3.5.1",
     "shapefile": "^0.6.6",
@@ -40,7 +40,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.0.5",
+    "eslint-config-next": "^16.0.8",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
