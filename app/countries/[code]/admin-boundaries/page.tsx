@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { DeleteBoundariesButton } from '@/components/admin-boundaries/delete-boundaries-button'
 
 export default async function AdminBoundariesPage({
   params,
@@ -69,11 +70,23 @@ export default async function AdminBoundariesPage({
       <main className="container mx-auto px-4 py-6">
         <Card>
           <CardHeader>
-            <CardTitle>Boundaries</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Boundaries</CardTitle>
+              {user && boundaries && boundaries.length > 0 && (
+                <DeleteBoundariesButton
+                  countryId={country.id}
+                  boundaryCount={boundaries.length}
+                />
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {boundaries && boundaries.length > 0 ? (
-              <Table>
+              <>
+                <div className="mb-4 text-xs text-gray-600">
+                  Showing {boundaries.length} boundary records. Use "Delete All Boundaries" to remove all boundaries for this country.
+                </div>
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Level</TableHead>
@@ -103,6 +116,7 @@ export default async function AdminBoundariesPage({
                   ))}
                 </TableBody>
               </Table>
+              </>
             ) : (
               <div className="text-center py-8">
                 <p className="text-sm text-gray-600 mb-4">
