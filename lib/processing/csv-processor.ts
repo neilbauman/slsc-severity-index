@@ -17,14 +17,26 @@ export interface CSVProcessingResult {
     pcode?: string
     name?: string
     population?: string
+    adminLevel?: string
     [key: string]: string | undefined
   }
+  availableAdminLevels?: number[] // Detected admin levels in the data
 }
 
 /**
  * Process CSV file and extract data
+ * @param fileText - CSV file content as string
+ * @param options - Optional processing options
+ * @param options.filterAdminLevel - If provided, filter rows to only this admin level
+ * @param options.pcodeColumn - Override pcode column detection with specific column name
  */
-export async function processCSVFile(fileText: string): Promise<CSVProcessingResult> {
+export async function processCSVFile(
+  fileText: string,
+  options?: {
+    filterAdminLevel?: number
+    pcodeColumn?: string
+  }
+): Promise<CSVProcessingResult> {
   const parseResult = Papa.parse<Record<string, any>>(fileText, {
     header: true,
     skipEmptyLines: true,
@@ -36,31 +48,100 @@ export async function processCSVFile(fileText: string): Promise<CSVProcessingRes
     console.warn('CSV parsing warnings:', parseResult.errors)
   }
 
-  const rows = parseResult.data.filter((row) => {
+  // Get headers from first row
+  const headers = parseResult.meta.fields || []
+
+  let rows = parseResult.data.filter((row) => {
     // Filter out completely empty rows
     return Object.keys(row).length > 0 && Object.values(row).some((val) => val !== null && val !== '')
   })
 
-  // Get headers from first row
-  const headers = parseResult.meta.fields || []
+  // Filter by admin level if requested
+  if (options?.filterAdminLevel !== undefined) {
+    // Try to detect admin_level column
+    const adminLevelColumn = headers.find(h => 
+      h.toLowerCase() === 'admin_level' || 
+      h.toLowerCase() === 'adminlevel' ||
+      (h.toLowerCase().includes('admin') && h.toLowerCase().includes('level'))
+    )
+    
+    if (adminLevelColumn) {
+      rows = rows.filter(row => {
+        const rowLevel = row[adminLevelColumn]
+        if (rowLevel === null || rowLevel === undefined || rowLevel === '') {
+          return false
+        }
+        const levelNum = parseInt(String(rowLevel), 10)
+        return !isNaN(levelNum) && levelNum === options.filterAdminLevel
+      })
+    }
+  }
 
   // Detect common field patterns
   const detectedFields: CSVProcessingResult['detectedFields'] = {}
+  const availableAdminLevels = new Set<number>()
   
   headers.forEach((header) => {
     const lowerHeader = header.toLowerCase()
     
-    // Pcode detection
-    if (!detectedFields.pcode) {
+    // Admin level detection
+    if (!detectedFields.adminLevel) {
       if (
-        lowerHeader.includes('pcode') ||
-        (lowerHeader.includes('adm') && lowerHeader.includes('code')) ||
-        lowerHeader === 'code' ||
-        lowerHeader.includes('admin_code')
+        lowerHeader === 'admin_level' ||
+        lowerHeader === 'adminlevel' ||
+        (lowerHeader.includes('admin') && lowerHeader.includes('level'))
       ) {
-        detectedFields.pcode = header
+        detectedFields.adminLevel = header
       }
     }
+  })
+
+  // If admin level is specified, try to detect the appropriate pcode column for that level
+  if (options?.filterAdminLevel !== undefined) {
+    const level = options.filterAdminLevel
+    // Try level-specific patterns first (e.g., admin1_code, admin2_code)
+    const levelSpecificPcode = headers.find(h => {
+      const lower = h.toLowerCase()
+      return (
+        lower === `admin${level}_code` ||
+        lower === `adm${level}_code` ||
+        lower === `admin${level}_pcode` ||
+        lower === `adm${level}_pcode`
+      )
+    })
+    
+    if (levelSpecificPcode) {
+      detectedFields.pcode = levelSpecificPcode
+    }
+  }
+
+  // General pcode detection (fallback)
+  if (!detectedFields.pcode || options?.pcodeColumn) {
+    // Use override if provided
+    if (options?.pcodeColumn && headers.includes(options.pcodeColumn)) {
+      detectedFields.pcode = options.pcodeColumn
+    } else {
+      // Try general patterns
+      headers.forEach((header) => {
+        const lowerHeader = header.toLowerCase()
+        if (!detectedFields.pcode) {
+          if (
+            lowerHeader.includes('pcode') ||
+            (lowerHeader.includes('adm') && lowerHeader.includes('code')) ||
+            lowerHeader === 'code' ||
+            lowerHeader.includes('admin_code') ||
+            lowerHeader === 'location_code' // HDX format
+          ) {
+            detectedFields.pcode = header
+          }
+        }
+      })
+    }
+  }
+  
+  // Continue with name and population detection
+  headers.forEach((header) => {
+    const lowerHeader = header.toLowerCase()
 
     // Name detection
     if (!detectedFields.name) {
@@ -87,11 +168,25 @@ export async function processCSVFile(fileText: string): Promise<CSVProcessingRes
     }
   })
 
+  // Detect available admin levels if admin_level column exists
+  if (detectedFields.adminLevel) {
+    rows.forEach(row => {
+      const levelValue = row[detectedFields.adminLevel!]
+      if (levelValue !== null && levelValue !== undefined && levelValue !== '') {
+        const levelNum = parseInt(String(levelValue), 10)
+        if (!isNaN(levelNum)) {
+          availableAdminLevels.add(levelNum)
+        }
+      }
+    })
+  }
+
   return {
     rows,
     totalRows: rows.length,
     headers,
     detectedFields,
+    availableAdminLevels: availableAdminLevels.size > 0 ? Array.from(availableAdminLevels).sort((a, b) => a - b) : undefined,
   }
 }
 

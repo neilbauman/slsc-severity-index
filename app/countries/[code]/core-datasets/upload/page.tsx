@@ -55,12 +55,13 @@ export default function UploadCoreDatasetPage() {
     fetchAdminLevels()
   }, [code])
 
-  const loadPreview = async (file: File) => {
+  const loadPreview = async (file: File, filterLevel?: number) => {
     try {
       const fileExtension = file.name.split('.').pop()?.toLowerCase()
       let headers: string[] = []
       let rows: any[] = []
       let totalRows = 0
+      let availableLevels: number[] = []
 
       if (fileExtension === 'xlsx' || fileExtension === 'xls') {
         const fileBuffer = await file.arrayBuffer()
@@ -76,16 +77,56 @@ export default function UploadCoreDatasetPage() {
       } else if (fileExtension === 'csv') {
         const text = await file.text()
         const Papa = (await import('papaparse')).default
-        const parseResult = Papa.parse<Record<string, any>>(text, {
+        // Parse all rows first to detect admin levels
+        const fullParseResult = Papa.parse<Record<string, any>>(text, {
           header: true,
           skipEmptyLines: true,
           transformHeader: (header: string) => header.trim(),
           transform: (value: string) => value.trim() || null,
-          preview: 100, // Preview first 100 rows
         })
-        rows = parseResult.data
-        totalRows = parseResult.data.length + (parseResult.errors.length > 0 ? 0 : parseResult.meta.cursor || 0)
-        headers = parseResult.meta.fields || []
+        headers = fullParseResult.meta.fields || []
+        
+        // Detect admin_level column and available levels
+        const adminLevelColumn = headers.find(h => 
+          h.toLowerCase() === 'admin_level' || 
+          h.toLowerCase() === 'adminlevel' ||
+          (h.toLowerCase().includes('admin') && h.toLowerCase().includes('level'))
+        )
+        
+        if (adminLevelColumn) {
+          const levelSet = new Set<number>()
+          fullParseResult.data.forEach(row => {
+            const levelValue = row[adminLevelColumn]
+            if (levelValue !== null && levelValue !== undefined && levelValue !== '') {
+              const levelNum = parseInt(String(levelValue), 10)
+              if (!isNaN(levelNum)) {
+                levelSet.add(levelNum)
+              }
+            }
+          })
+          availableLevels = Array.from(levelSet).sort((a, b) => a - b)
+          
+          // Filter rows if admin level is specified
+          if (filterLevel !== undefined) {
+            rows = fullParseResult.data.filter(row => {
+              const rowLevel = row[adminLevelColumn]
+              if (rowLevel === null || rowLevel === undefined || rowLevel === '') {
+                return false
+              }
+              const levelNum = parseInt(String(rowLevel), 10)
+              return !isNaN(levelNum) && levelNum === filterLevel
+            })
+            totalRows = rows.length
+            // Limit preview to 100 rows
+            rows = rows.slice(0, 100)
+          } else {
+            rows = fullParseResult.data.slice(0, 100)
+            totalRows = fullParseResult.data.length
+          }
+        } else {
+          rows = fullParseResult.data.slice(0, 100)
+          totalRows = fullParseResult.data.length
+        }
       } else if (fileExtension === 'json' || fileExtension === 'geojson') {
         const text = await file.text()
         const json = JSON.parse(text)
@@ -100,22 +141,47 @@ export default function UploadCoreDatasetPage() {
         headers = rows.length > 0 ? Object.keys(rows[0]) : []
       }
 
-      // Auto-detect columns
+      // Auto-detect columns based on selected admin level
       let detectedPcode = ''
       let detectedPopulation = ''
 
-      headers.forEach((header) => {
-        const lowerHeader = header.toLowerCase()
-        if (!detectedPcode) {
+      // If admin level is selected and we have level-specific columns, use those
+      if (filterLevel !== undefined && availableLevels.includes(filterLevel)) {
+        const level = filterLevel
+        // Try level-specific pcode column first (e.g., admin1_code, admin2_code)
+        const levelSpecificPcode = headers.find(h => {
+          const lower = h.toLowerCase()
+          return (
+            lower === `admin${level}_code` ||
+            lower === `adm${level}_code` ||
+            lower === `admin${level}_pcode` ||
+            lower === `adm${level}_pcode`
+          )
+        })
+        if (levelSpecificPcode) {
+          detectedPcode = levelSpecificPcode
+        }
+      }
+
+      // Fallback to general pcode detection
+      if (!detectedPcode) {
+        headers.forEach((header) => {
+          const lowerHeader = header.toLowerCase()
           if (
             lowerHeader.includes('pcode') ||
             (lowerHeader.includes('adm') && lowerHeader.includes('code')) ||
             lowerHeader === 'code' ||
-            lowerHeader.includes('admin_code')
+            lowerHeader.includes('admin_code') ||
+            lowerHeader === 'location_code' // HDX format
           ) {
             detectedPcode = header
           }
-        }
+        })
+      }
+
+      // Detect population column
+      headers.forEach((header) => {
+        const lowerHeader = header.toLowerCase()
         if (!detectedPopulation) {
           if (
             lowerHeader.includes('pop') ||
@@ -130,6 +196,16 @@ export default function UploadCoreDatasetPage() {
 
       setPcodeColumn(detectedPcode)
       setPopulationColumn(detectedPopulation)
+      
+      // Update available admin levels if detected from CSV
+      if (availableLevels.length > 0) {
+        setAvailableAdminLevels(availableLevels.map(level => ({ level, name: `Level ${level}` })))
+        // Auto-select first available level if current selection is not in the list
+        if (filterLevel === undefined || !availableLevels.includes(filterLevel)) {
+          setAdminLevel(availableLevels[0])
+        }
+      }
+      
       setPreviewData({ headers, rows, totalRows })
     } catch (err: any) {
       setError(`Failed to preview file: ${err.message}`)
@@ -144,7 +220,15 @@ export default function UploadCoreDatasetPage() {
         const nameWithoutExt = selectedFile.name.replace(/\.[^/.]+$/, '')
         setDatasetName(nameWithoutExt)
       }
-      await loadPreview(selectedFile)
+      await loadPreview(selectedFile, adminLevel)
+    }
+  }
+
+  // Reload preview when admin level changes (if file is already loaded)
+  const handleAdminLevelChange = async (newLevel: number) => {
+    setAdminLevel(newLevel)
+    if (file) {
+      await loadPreview(file, newLevel)
     }
   }
 
@@ -309,7 +393,7 @@ export default function UploadCoreDatasetPage() {
                     </label>
                     <select
                       value={adminLevel}
-                      onChange={(e) => setAdminLevel(Number(e.target.value))}
+                      onChange={(e) => handleAdminLevelChange(Number(e.target.value))}
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
                       required
                     >
@@ -320,7 +404,7 @@ export default function UploadCoreDatasetPage() {
                       ))}
                     </select>
                     <p className="text-xs text-gray-500 mt-1">
-                      Select the admin level this dataset represents
+                      Select the admin level to import from this dataset. The preview below will be filtered to show only rows for the selected level.
                     </p>
                   </div>
 

@@ -81,7 +81,15 @@ export async function POST(
       validationResult = validateExcelData(processingResult)
     } else if (fileExtension === 'csv') {
       const fileText = await fileData.text()
-      processingResult = await processCSVFile(fileText)
+      // Get admin level and pcode column from metadata if available
+      const metadata = (dataset.metadata as any) || {}
+      const adminLevel = metadata.adminLevel !== undefined ? parseInt(String(metadata.adminLevel), 10) : undefined
+      const pcodeColumn = metadata.columns?.pcode
+      
+      processingResult = await processCSVFile(fileText, {
+        filterAdminLevel: !isNaN(adminLevel || NaN) ? adminLevel : undefined,
+        pcodeColumn: pcodeColumn || undefined,
+      })
       validationResult = validateCSVData(processingResult)
     } else {
       return NextResponse.json(
