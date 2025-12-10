@@ -151,28 +151,90 @@ export async function extractPixelsInPolygon(
     return [] // No overlap
   }
   
-  // Iterate through pixels that intersect with polygon bounds
+  // Calculate which pixel rows/columns we need to check (optimize for large rasters)
+  // Only read the region that intersects with the polygon bounding box
+  const startCol = Math.max(0, Math.floor((polyMinX - minX) / pixelWidth))
+  const endCol = Math.min(width - 1, Math.ceil((polyMaxX - minX) / pixelWidth))
+  const startRow = Math.max(0, Math.floor((maxY - polyMaxY) / pixelHeight))
+  const endRow = Math.min(height - 1, Math.ceil((maxY - polyMinY) / pixelHeight))
+  
+  console.log('Processing raster region:', {
+    fullRaster: { width, height, totalPixels: width * height },
+    region: { startRow, endRow, startCol, endCol, regionPixels: (endRow - startRow + 1) * (endCol - startCol + 1) },
+    polygonBounds: { minX: polyMinX, minY: polyMinY, maxX: polyMaxX, maxY: polyMaxY },
+  })
+  
+  // For very large regions, we might need to use windowed reads
+  // But for now, let's try reading the full raster if it's reasonable size
+  const totalPixels = width * height
+  const regionPixels = (endRow - startRow + 1) * (endCol - startCol + 1)
+  
+  // If the raster is huge (>10M pixels) and we only need a small region, use windowed read
+  let regionData: Float32Array | Float64Array | Int16Array | Int32Array
+  let regionWidth: number
+  let regionHeight: number
+  let regionOffsetX: number
+  let regionOffsetY: number
+  
+  if (totalPixels > 10_000_000 && regionPixels < totalPixels * 0.1) {
+    // Use windowed read for efficiency
+    try {
+      const regionRasters = await image.readRasters({
+        window: [[startRow, endRow + 1], [startCol, endCol + 1]],
+      })
+      regionData = regionRasters[0] as Float32Array | Float64Array | Int16Array | Int32Array
+      regionWidth = endCol - startCol + 1
+      regionHeight = endRow - startRow + 1
+      regionOffsetX = startCol
+      regionOffsetY = startRow
+      console.log('Using windowed read for efficiency')
+    } catch (windowError) {
+      console.warn('Windowed read failed, using full raster:', windowError)
+      regionData = data
+      regionWidth = width
+      regionHeight = height
+      regionOffsetX = 0
+      regionOffsetY = 0
+    }
+  } else {
+    // Use full raster data
+    regionData = data
+    regionWidth = width
+    regionHeight = height
+    regionOffsetX = 0
+    regionOffsetY = 0
+  }
+  
+  // Iterate through pixels in the region
   let pixelsChecked = 0
   let pixelsInBounds = 0
-  for (let row = 0; row < height; row++) {
-    for (let col = 0; col < width; col++) {
+  for (let row = startRow; row <= endRow; row++) {
+    for (let col = startCol; col <= endCol; col++) {
       pixelsChecked++
       
       // Calculate pixel center coordinates
       const x = minX + (col + 0.5) * pixelWidth
       const y = maxY - (row + 0.5) * pixelHeight // Y is top-down in rasters
       
-      // Quick bounds check
+      // Additional bounds check (should be redundant but safe)
       if (x < polyMinX || x > polyMaxX || y < polyMinY || y > polyMaxY) {
         continue
       }
       
       pixelsInBounds++
       
-      const value = data[row * width + col]
+      // Get value from region data or full data
+      const dataRow = row - regionOffsetY
+      const dataCol = col - regionOffsetX
+      const value = regionData[dataRow * regionWidth + dataCol]
       
       // Skip no-data values
       if (noDataValue !== null && (isNaN(value as any) || value === noDataValue)) {
+        continue
+      }
+      
+      // Skip negative or invalid values
+      if (isNaN(value as any) || value < 0) {
         continue
       }
       
