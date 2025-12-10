@@ -48,7 +48,9 @@ export default async function HazardsPage({
             </Link>
             <h1 className="text-lg font-semibold text-gray-900">Hazards</h1>
             {user && (
-              <Button size="sm">Upload Hazard</Button>
+              <Link href={`/countries/${code}/hazards/upload`}>
+                <Button size="sm">Upload Hazard</Button>
+              </Link>
             )}
           </div>
         </div>
@@ -96,7 +98,9 @@ export default async function HazardsPage({
                   No hazards uploaded yet
                 </p>
                 {user && (
-                  <Button size="sm">Upload Hazard</Button>
+                  <Link href={`/countries/${code}/hazards/upload`}>
+                    <Button size="sm">Upload Hazard</Button>
+                  </Link>
                 )}
               </div>
             )}
