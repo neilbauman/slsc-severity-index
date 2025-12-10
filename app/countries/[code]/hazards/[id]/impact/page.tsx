@@ -261,27 +261,64 @@ export default function HazardImpactPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {results.metadata?.diagnostic && (
+                {(results.metadata?.diagnostic || results.results.totalAffectedPixels === 0) && (
                   <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
                     <p className="text-sm font-semibold text-yellow-900 mb-2">⚠️ Diagnostic Information</p>
-                    <p className="text-xs text-yellow-800 mb-2">{results.metadata.diagnostic.warning}</p>
-                    {results.metadata.diagnostic.rasterBounds && (
-                      <div className="text-xs text-yellow-700">
-                        <p><strong>Raster Bounds:</strong> </p>
-                        <p className="ml-2">
-                          Longitude: {results.metadata.diagnostic.rasterBounds.minX.toFixed(4)} to {results.metadata.diagnostic.rasterBounds.maxX.toFixed(4)}<br/>
-                          Latitude: {results.metadata.diagnostic.rasterBounds.minY.toFixed(4)} to {results.metadata.diagnostic.rasterBounds.maxY.toFixed(4)}
-                        </p>
-                      </div>
+                    {results.metadata?.diagnostic ? (
+                      <>
+                        <p className="text-xs text-yellow-800 mb-2">{results.metadata.diagnostic.warning}</p>
+                        {results.metadata.diagnostic.rasterBounds && (
+                          <div className="text-xs text-yellow-700 mb-2">
+                            <p><strong>Raster Bounds:</strong></p>
+                            <p className="ml-2">
+                              Longitude: {results.metadata.diagnostic.rasterBounds.minX.toFixed(4)} to {results.metadata.diagnostic.rasterBounds.maxX.toFixed(4)}<br/>
+                              Latitude: {results.metadata.diagnostic.rasterBounds.minY.toFixed(4)} to {results.metadata.diagnostic.rasterBounds.maxY.toFixed(4)}
+                            </p>
+                            {results.metadata.diagnostic.rasterSize && (
+                              <p className="ml-2 mt-1">
+                                Size: {results.metadata.diagnostic.rasterSize.width.toLocaleString()} × {results.metadata.diagnostic.rasterSize.height.toLocaleString()} pixels
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {results.metadata.diagnostic.sampleGeometryBounds && (
+                          <div className="text-xs text-yellow-700 mb-2">
+                            <p><strong>Sample Hazard Geometry Bounds (first geometry):</strong></p>
+                            <p className="ml-2">
+                              Longitude: {results.metadata.diagnostic.sampleGeometryBounds.minX?.toFixed(4)} to {results.metadata.diagnostic.sampleGeometryBounds.maxX?.toFixed(4)}<br/>
+                              Latitude: {results.metadata.diagnostic.sampleGeometryBounds.minY?.toFixed(4)} to {results.metadata.diagnostic.sampleGeometryBounds.maxY?.toFixed(4)}
+                            </p>
+                          </div>
+                        )}
+                        {results.metadata.diagnostic.rasterCRS && (
+                          <p className="text-xs text-yellow-700 mb-2">
+                            <strong>Raster CRS:</strong> {results.metadata.diagnostic.rasterCRS}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs text-yellow-800 mb-2">
+                        No pixels found in the analysis. This could indicate:
+                        <ul className="ml-4 mt-1 list-disc">
+                          <li>The hazard geometries don't overlap with the raster bounds</li>
+                          <li>A coordinate system mismatch between the hazard and raster</li>
+                          <li>The raster file might be corrupted or in an unexpected format</li>
+                        </ul>
+                      </p>
                     )}
-                    {results.metadata.processingErrors && results.metadata.processingErrors.length > 0 && (
-                      <div className="text-xs text-red-700 mt-2">
+                    {results.metadata?.processingErrors && results.metadata.processingErrors.length > 0 && (
+                      <div className="text-xs text-red-700 mt-2 border-t border-yellow-300 pt-2">
                         <p><strong>Processing Errors:</strong></p>
                         <ul className="ml-4 list-disc">
                           {results.metadata.processingErrors.map((err: string, idx: number) => (
                             <li key={idx}>{err}</li>
                           ))}
                         </ul>
+                      </div>
+                    )}
+                    {analysisType === 'aggregated' && (
+                      <div className="text-xs text-blue-700 mt-2 border-t border-yellow-300 pt-2">
+                        <p><strong>Note:</strong> Aggregated analysis requires pre-calculated zonal statistics. Try selecting "Granular (Pixel-level)" analysis instead for direct raster overlay.</p>
                       </div>
                     )}
                   </div>
