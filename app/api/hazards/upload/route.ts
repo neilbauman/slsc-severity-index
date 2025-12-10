@@ -84,28 +84,36 @@ async function processFileFromStorage(
   supabase: any,
   filePath: string
 ): Promise<any> {
-  const { data: fileData, error: fileError } = await supabase.storage
-    .from('admin-boundaries')
-    .download(filePath)
+  try {
+    const { data: fileData, error: fileError } = await supabase.storage
+      .from('admin-boundaries')
+      .download(filePath)
 
-  if (fileError || !fileData) {
-    throw new Error(`Failed to download file from storage: ${fileError?.message || 'Unknown error'}`)
-  }
-
-  const fileExtension = filePath.split('.').pop()?.toLowerCase()
-
-  if (fileExtension === 'json' || fileExtension === 'geojson') {
-    const text = await fileData.text()
-    const geojson = JSON.parse(text)
-    if (!geojson.features || !Array.isArray(geojson.features)) {
-      throw new Error('Invalid GeoJSON: missing features array')
+    if (fileError || !fileData) {
+      throw new Error(`Failed to download file from storage: ${fileError?.message || 'Unknown error'}`)
     }
-    return geojson
-  } else if (fileExtension === 'zip') {
-    const arrayBuffer = await fileData.arrayBuffer()
-    return await processShapefileFromZip(arrayBuffer)
-  } else {
-    throw new Error(`Unsupported file format: .${fileExtension}. Use GeoJSON or Shapefile (ZIP).`)
+
+    const fileExtension = filePath.split('.').pop()?.toLowerCase()
+
+    if (fileExtension === 'json' || fileExtension === 'geojson') {
+      const text = await fileData.text()
+      const geojson = JSON.parse(text)
+      if (!geojson.features || !Array.isArray(geojson.features)) {
+        throw new Error('Invalid GeoJSON: missing features array')
+      }
+      return geojson
+    } else if (fileExtension === 'zip') {
+      const arrayBuffer = await fileData.arrayBuffer()
+      return await processShapefileFromZip(arrayBuffer)
+    } else {
+      throw new Error(`Unsupported file format: .${fileExtension}. Use GeoJSON or Shapefile (ZIP).`)
+    }
+  } catch (error: any) {
+    // Re-throw with more context
+    if (error.message && !error.message.includes('Failed to')) {
+      throw new Error(`Error processing file from storage: ${error.message}`)
+    }
+    throw error
   }
 }
 
@@ -356,7 +364,15 @@ export async function POST(request: Request) {
     } else if (filePath) {
       // Process from Supabase Storage
       console.log('Processing hazard file from storage:', filePath)
-      geojson = await processFileFromStorage(serviceRoleSupabase, filePath)
+      try {
+        geojson = await processFileFromStorage(serviceRoleSupabase, filePath)
+      } catch (storageError: any) {
+        console.error('Error processing file from storage:', storageError)
+        return NextResponse.json(
+          { error: `Failed to process uploaded file: ${storageError.message || String(storageError)}` },
+          { status: 400 }
+        )
+      }
     } else {
       return NextResponse.json(
         { error: 'Either filePath or sourceUrl must be provided' },
