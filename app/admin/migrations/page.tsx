@@ -7,10 +7,12 @@ import { Badge } from '@/components/ui/badge'
 
 const MIGRATIONS = [
   { name: 'create_ssc_calculation_tables', description: 'Create SSC calculation tables (calculation_models, household_datasets, household_records)' },
+  { name: 'create_dataset_types_table', description: 'Create dataset_types table with Categorical and Numeric types (required for dataset type selection)' },
   { name: 'add_dataset_versions', description: 'Add dataset versioning support' },
   { name: 'add_datasets_rls_policies', description: 'Add RLS policies for datasets' },
   { name: 'create_datasets_bucket', description: 'Create storage bucket for datasets' },
   { name: 'create_admin_boundaries_bucket', description: 'Create storage bucket for admin-boundaries with 500MB file size limit' },
+  { name: 'alter_admin_boundaries_geometry_column', description: 'Allow MultiPolygon geometries in admin_boundaries table' },
   { name: 'fix_user_country_permissions_recursion', description: 'Fix user country permissions recursion' },
 ]
 
