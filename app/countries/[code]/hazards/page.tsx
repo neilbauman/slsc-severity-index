@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { DeleteHazardButton } from '@/components/hazards/delete-hazard-button'
 
 export default async function HazardsPage({
   params,
@@ -91,9 +92,15 @@ export default async function HazardsPage({
                       </TableCell>
                       {user && (
                         <TableCell>
-                          <Link href={`/countries/${code}/hazards/${hazard.id}/impact`}>
-                            <Button size="sm" variant="outline">Analyze Impact</Button>
-                          </Link>
+                          <div className="flex gap-2 items-center">
+                            <Link href={`/countries/${code}/hazards/${hazard.id}/impact`}>
+                              <Button size="sm" variant="outline">Analyze Impact</Button>
+                            </Link>
+                            <DeleteHazardButton 
+                              hazardId={hazard.id} 
+                              hazardName={hazard.name}
+                            />
+                          </div>
                         </TableCell>
                       )}
                     </TableRow>
