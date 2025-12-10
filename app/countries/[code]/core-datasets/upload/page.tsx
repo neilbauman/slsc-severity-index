@@ -245,14 +245,33 @@ export default function UploadCoreDatasetPage() {
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0] || null
-    if (selectedFile) {
+    if (!selectedFile) return
+
+    const fileExtension = selectedFile.name.split('.').pop()?.toLowerCase()
+    
+    // Handle GeoTIFF files specially - skip CSV preview
+    if (fileExtension === 'tif' || fileExtension === 'tiff' || fileExtension === 'geotiff') {
       setFile(selectedFile)
+      setError(null)
+      setProgress('GeoTIFF file detected. This will be processed as raster population data for granular analysis.')
+      
+      // For GeoTIFF, skip preview step - will upload directly
+      setPreviewData(null)
+      
       if (!datasetName) {
         const nameWithoutExt = selectedFile.name.replace(/\.[^/.]+$/, '')
         setDatasetName(nameWithoutExt)
       }
-      await loadPreview(selectedFile, adminLevel, filterTotalPopulationOnly)
+      return
     }
+
+    // Continue with existing CSV/Excel/GeoJSON handling
+    setFile(selectedFile)
+    if (!datasetName) {
+      const nameWithoutExt = selectedFile.name.replace(/\.[^/.]+$/, '')
+      setDatasetName(nameWithoutExt)
+    }
+    await loadPreview(selectedFile, adminLevel, filterTotalPopulationOnly)
   }
 
   // Reload preview when admin level changes (if file is already loaded)
@@ -312,15 +331,66 @@ export default function UploadCoreDatasetPage() {
 
       if (uploadError) {
         const errorMessage = uploadError.message || String(uploadError)
+        console.error('Upload error:', uploadError)
         if (errorMessage.includes('Bucket not found') || errorMessage.includes('does not exist') || errorMessage.includes('400')) {
           throw new Error(
             'Storage bucket "datasets" not found. Please create it in Supabase Storage or run the migration: migrations/create_datasets_bucket.sql'
           )
         }
+        if (errorMessage.includes('mime type') || errorMessage.includes('not supported')) {
+          throw new Error(`File type not supported: ${errorMessage}. Please check that the storage bucket allows this file type.`)
+        }
         throw new Error(`Failed to upload file: ${errorMessage}`)
       }
+      
+      console.log('File uploaded successfully to:', path)
 
       setFilePath(path)
+      
+      // For GeoTIFF files, create dataset directly without configuration step
+      const fileExtension = file.name.split('.').pop()?.toLowerCase()
+      if (fileExtension === 'tif' || fileExtension === 'tiff' || fileExtension === 'geotiff') {
+        // Create dataset record directly for GeoTIFF
+        const supabase = createClient()
+        const { data: country } = await supabase
+          .from('countries')
+          .select('id')
+          .eq('code', code.toUpperCase())
+          .single()
+
+        if (!country) {
+          throw new Error('Country not found')
+        }
+
+        setProgress('Creating raster dataset record...')
+        const createResponse = await fetch('/api/datasets/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            countryId: country.id,
+            datasetName,
+            filePath: path,
+            metadata: {
+              fileType: 'raster',
+              format: 'geotiff',
+            },
+          }),
+        })
+
+        const createData = await createResponse.json()
+        if (!createResponse.ok) {
+          console.error('Dataset creation failed:', createData)
+          throw new Error(createData.error || 'Failed to create dataset record')
+        }
+
+        console.log('GeoTIFF dataset created successfully:', createData)
+        setProgress('GeoTIFF uploaded successfully! Redirecting to datasets list...')
+        setTimeout(() => {
+          window.location.href = `/countries/${code}/core-datasets`
+        }, 2000)
+        return
+      }
+      
       setStep('configure')
     } catch (err: any) {
       setError(err.message || 'Upload failed')
@@ -397,6 +467,140 @@ export default function UploadCoreDatasetPage() {
       setError(err.message || 'Configuration failed')
       setLoading(false)
     }
+  }
+
+  // Prevent configure step for GeoTIFF files - they should upload directly
+  if (step === 'configure' && file && (file.name.toLowerCase().endsWith('.tif') || file.name.toLowerCase().endsWith('.tiff'))) {
+    // GeoTIFF file shouldn't reach here, but if it does, redirect back to upload
+    // This likely means the upload didn't complete - try again
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white border-b border-gray-200">
+          <div className="container mx-auto px-4 py-3">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => {
+                  setStep('upload')
+                  setError(null)
+                  setProgress('')
+                }}
+                className="text-sm font-semibold text-gray-900 hover:underline"
+              >
+                ← Back
+              </button>
+              <h1 className="text-lg font-semibold text-gray-900">
+                GeoTIFF Upload
+              </h1>
+              <div></div>
+            </div>
+          </div>
+        </header>
+        <main className="container mx-auto px-4 py-6 max-w-2xl">
+          <Card>
+            <CardHeader>
+              <CardTitle>GeoTIFF Raster File</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-4">
+                <p className="text-sm text-yellow-800">
+                  GeoTIFF files don't require column configuration. The upload may not have completed successfully.
+                </p>
+              </div>
+              {error && (
+                <div className="text-sm text-red-600 bg-red-50 p-3 rounded mb-4">
+                  {error}
+                </div>
+              )}
+              {progress && (
+                <div className="text-sm text-blue-600 bg-blue-50 p-3 rounded mb-4">
+                  {progress}
+                </div>
+              )}
+              <div className="space-y-4">
+                <p className="text-sm text-gray-700">
+                  <strong>File:</strong> {file?.name}
+                </p>
+                <p className="text-sm text-gray-700">
+                  <strong>Dataset Name:</strong> {datasetName || 'Not set'}
+                </p>
+                {filePath && (
+                  <p className="text-sm text-gray-700">
+                    <strong>Upload Path:</strong> {filePath}
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-2 mt-6">
+                <Button
+                  onClick={async () => {
+                    // Re-attempt upload for GeoTIFF
+                    if (!file || !filePath) {
+                      setError('Please go back and try uploading again')
+                      return
+                    }
+                    setError(null)
+                    setLoading(true)
+                    try {
+                      const supabase = createClient()
+                      const { data: country } = await supabase
+                        .from('countries')
+                        .select('id')
+                        .eq('code', code.toUpperCase())
+                        .single()
+
+                      if (!country) {
+                        throw new Error('Country not found')
+                      }
+
+                      setProgress('Creating raster dataset record...')
+                      const createResponse = await fetch('/api/datasets/upload', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          countryId: country.id,
+                          datasetName,
+                          filePath,
+                          metadata: {
+                            fileType: 'raster',
+                            format: 'geotiff',
+                          },
+                        }),
+                      })
+
+                      const createData = await createResponse.json()
+                      if (!createResponse.ok) {
+                        throw new Error(createData.error || 'Failed to create dataset record')
+                      }
+
+                      setProgress('GeoTIFF uploaded successfully!')
+                      setTimeout(() => {
+                        window.location.href = `/countries/${code}/core-datasets`
+                      }, 2000)
+                    } catch (err: any) {
+                      setError(err.message || 'Upload failed')
+                      setLoading(false)
+                    }
+                  }}
+                  disabled={loading || !filePath}
+                  className="flex-1"
+                >
+                  {loading ? 'Creating Dataset...' : 'Complete GeoTIFF Upload'}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setStep('upload')
+                    setError(null)
+                    setProgress('')
+                  }}
+                >
+                  Back to Upload
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    )
   }
 
   if (step === 'configure' && previewData) {
@@ -640,14 +844,25 @@ export default function UploadCoreDatasetPage() {
                 </label>
                 <Input
                   type="file"
-                  accept=".csv,.xlsx,.xls,.geojson,.json"
+                  accept=".csv,.xlsx,.xls,.geojson,.json,.tif,.tiff,.geotiff,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json,application/geo+json,image/tiff,image/tif,application/octet-stream"
                   onChange={handleFileSelect}
                   required
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Supported formats: CSV, Excel (.xlsx, .xls), GeoJSON (.geojson, .json)
+                  Supported formats: CSV, Excel (.xlsx, .xls), GeoJSON (.geojson, .json), GeoTIFF (.tif, .tiff) for raster population data
                 </p>
               </div>
+
+              {file && (file.name.toLowerCase().endsWith('.tif') || file.name.toLowerCase().endsWith('.tiff')) && (
+                <div className="bg-purple-50 border border-purple-200 rounded-md p-3">
+                  <p className="text-xs font-medium text-purple-900 mb-1">
+                    ✓ GeoTIFF Raster File Selected
+                  </p>
+                  <p className="text-xs text-purple-700">
+                    This file will be used for granular population analysis. After upload, you can calculate zonal statistics (population per admin boundary) or use it for pixel-level overlay with hazard extents.
+                  </p>
+                </div>
+              )}
 
               {previewData && (
                 <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
@@ -674,8 +889,12 @@ export default function UploadCoreDatasetPage() {
               )}
 
               <div className="flex gap-2">
-                <Button type="submit" disabled={loading || !previewData} className="flex-1">
-                  {loading ? 'Uploading...' : 'Upload & Configure'}
+                <Button 
+                  type="submit" 
+                  disabled={loading || (!previewData && !(file && (file.name.toLowerCase().endsWith('.tif') || file.name.toLowerCase().endsWith('.tiff'))))} 
+                  className="flex-1"
+                >
+                  {loading ? 'Uploading...' : file && (file.name.toLowerCase().endsWith('.tif') || file.name.toLowerCase().endsWith('.tiff')) ? 'Upload GeoTIFF' : 'Upload & Configure'}
                 </Button>
                 <Button
                   type="button"

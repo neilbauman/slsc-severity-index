@@ -73,6 +73,7 @@ export default async function HazardsPage({
                     <TableHead>Type</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Uploaded</TableHead>
+                    {user && <TableHead>Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -88,6 +89,13 @@ export default async function HazardsPage({
                       <TableCell className="text-xs text-gray-600">
                         {new Date(hazard.created_at).toLocaleDateString()}
                       </TableCell>
+                      {user && (
+                        <TableCell>
+                          <Link href={`/countries/${code}/hazards/${hazard.id}/impact`}>
+                            <Button size="sm" variant="outline">Analyze Impact</Button>
+                          </Link>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

@@ -2,15 +2,37 @@
 -- Run this in your Supabase SQL Editor: https://supabase.com/dashboard/project/zanbizkpowwinhkrlkgd/sql
 
 -- Create the datasets bucket if it doesn't exist
+-- Update to support GeoTIFF raster files and larger file sizes
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
   'datasets',
   'datasets',
   false, -- Private bucket
-  52428800, -- 50MB file size limit
-  ARRAY['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/json', 'application/geo+json']
+  5368709120, -- 5GB file size limit (increased for large GeoTIFF raster files like WorldPop)
+  ARRAY[
+    'text/csv',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/json',
+    'application/geo+json',
+    'image/tiff',
+    'image/tif',
+    'application/octet-stream' -- Fallback for binary files like GeoTIFF
+  ]
 )
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE
+SET
+  file_size_limit = 5368709120, -- Update limit if bucket exists
+  allowed_mime_types = ARRAY[
+    'text/csv',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/json',
+    'application/geo+json',
+    'image/tiff',
+    'image/tif',
+    'application/octet-stream'
+  ];
 
 -- Apply RLS policies for datasets bucket
 -- Drop existing policies if they exist (to allow re-running this migration)
