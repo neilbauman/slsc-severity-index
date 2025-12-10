@@ -57,6 +57,20 @@ async function processShapefileFromZip(zipBuffer: ArrayBuffer): Promise<any> {
       throw new Error('Shapefile contains no features')
     }
 
+    // Validate geometry types - for hazards, we expect Polygon or MultiPolygon
+    const geometryTypes = [...new Set(features.map((f: any) => f.geometry?.type).filter(Boolean))]
+    console.log(`Shapefile contains ${features.length} features with geometry types: ${geometryTypes.join(', ')}`)
+    
+    // Warn if we find unsupported geometry types for hazard analysis
+    const unsupportedTypes = geometryTypes.filter(t => t !== 'Polygon' && t !== 'MultiPolygon')
+    if (unsupportedTypes.length > 0 && geometryTypes.every(t => t !== 'Polygon' && t !== 'MultiPolygon')) {
+      throw new Error(
+        `Shapefile contains ${unsupportedTypes.join(', ')} geometry types. ` +
+        `For hazard analysis, the shapefile must contain Polygon or MultiPolygon features. ` +
+        `Found: ${geometryTypes.join(', ')}`
+      )
+    }
+
     return featureCollection(features)
   } catch (e) {
     throw new Error(`Failed to parse shapefile: ${(e as Error).message}`)
