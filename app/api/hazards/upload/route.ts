@@ -182,10 +182,17 @@ async function storeHazard(
         for (let i = 1; i < simplified.features.length; i++) {
           const nextGeom = simplified.features[i].geometry
           if (unioned && nextGeom) {
-            const unionResult = union(
-              { type: 'Feature', geometry: unioned, properties: {} },
-              { type: 'Feature', geometry: nextGeom, properties: {} }
-            )
+            const feature1 = {
+              type: 'Feature' as const,
+              geometry: unioned,
+              properties: {}
+            }
+            const feature2 = {
+              type: 'Feature' as const,
+              geometry: nextGeom,
+              properties: {}
+            }
+            const unionResult = union(feature1 as any, feature2 as any)
             if (unionResult?.geometry) {
               unioned = unionResult.geometry
             }
@@ -258,10 +265,6 @@ async function storeHazard(
     return hazardDirect
   }
   
-  if (insertError) {
-    throw insertError
-  }
-
   if (insertError) {
     console.error('Hazard insert error:', insertError)
     throw new Error(`Failed to store hazard: ${insertError.message}`)
