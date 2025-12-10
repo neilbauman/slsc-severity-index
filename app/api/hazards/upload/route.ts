@@ -8,7 +8,7 @@ import JSZip from 'jszip'
 
 export const maxDuration = 300 // 5 minutes for processing large files
 export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
+export const dynamic = 'force-dynamic' // Force dynamic rendering to prevent caching
 
 /**
  * Convert shapefile from zip to GeoJSON
