@@ -158,6 +158,18 @@ export async function POST(
     const processingErrors: string[] = []
     const geometryDiagnostics: any[] = []
     
+    // Check geometry types
+    const geometryTypes = [...new Set(hazardGeometries.map(g => g.type))]
+    console.log(`[API] Found geometry types: ${geometryTypes.join(', ')}`)
+    
+    if (!geometryTypes.some(t => t === 'Polygon' || t === 'MultiPolygon')) {
+      processingErrors.push(
+        `Hazard geometries are of type(s): ${geometryTypes.join(', ')}. ` +
+        `Only Polygon and MultiPolygon geometries are supported for raster overlay analysis. ` +
+        `Please ensure the hazard shapefile contains polygon features (not points or lines).`
+      )
+    }
+    
     if (analysisType === 'granular') {
       // Granular: extract pixels for each geometry
       for (let i = 0; i < hazardGeometries.length; i++) {
