@@ -217,11 +217,10 @@ async function storeHazard(
     geometry = simplified.features[0].geometry
   }
 
-  // Use raw SQL to insert with PostGIS geometry conversion
-  // PostGIS accepts GeoJSON via ST_SetSRID(ST_GeomFromGeoJSON(...), 4326)
+  // Use RPC function to insert hazard with PostGIS geometry conversion
   const geometryGeojson = geometry ? JSON.stringify(geometry) : null
   
-  // Use RPC call to insert hazard with proper geometry conversion
+  // Try using the insert_hazard RPC function first
   const { data: hazard, error: insertError } = await supabase.rpc('insert_hazard', {
     p_country_id: countryId,
     p_name: name,
@@ -237,9 +236,16 @@ async function storeHazard(
     p_uploaded_by: userId,
   })
   
-  // If RPC doesn't exist, fall back to direct insert (may need geometry conversion in DB trigger)
-  if (insertError && insertError.message?.includes('function insert_hazard')) {
-    console.warn('insert_hazard RPC not found, using direct insert')
+  // If RPC function doesn't exist, fall back to direct insert (may fail if geometry column requires conversion)
+  if (insertError && (
+    insertError.message?.includes('Could not find the function') ||
+    insertError.message?.includes('function insert_hazard') ||
+    insertError.message?.includes('does not exist') ||
+    insertError.code === '42883'
+  )) {
+    console.warn('insert_hazard function not found, attempting direct insert. Please run the migration create_insert_hazard_function.sql')
+    
+    // Try direct insert - this may fail if geometry column doesn't accept JSONB/text
     const { data: hazardDirect, error: directError } = await supabase
       .from('hazards')
       .insert({
@@ -247,7 +253,7 @@ async function storeHazard(
         name,
         type,
         date: date || null,
-        geometry: geometry as any, // Pass as object, let PostGIS handle conversion if column accepts it
+        geometry: geometry as any, // May fail if column requires PostGIS geography type
         affected_areas: affectedAreas,
         metadata: {
           ...metadata,
@@ -260,7 +266,11 @@ async function storeHazard(
       .single()
     
     if (directError) {
-      throw directError
+      throw new Error(
+        `Failed to store hazard: The insert_hazard database function is required. ` +
+        `Please run the migration 'create_insert_hazard_function.sql' in your Supabase SQL editor. ` +
+        `Error: ${directError.message}`
+      )
     }
     return hazardDirect
   }
@@ -270,7 +280,7 @@ async function storeHazard(
     throw new Error(`Failed to store hazard: ${insertError.message}`)
   }
 
-  return hazard
+  return hazard?.[0] || hazard // RPC may return array or single object
 }
 
 export async function POST(request: Request) {

@@ -14,6 +14,7 @@ const MIGRATIONS = [
   { name: 'create_admin_boundaries_bucket', description: 'Create storage bucket for admin-boundaries with 500MB file size limit' },
   { name: 'alter_admin_boundaries_geometry_column', description: 'Allow MultiPolygon geometries in admin_boundaries table' },
   { name: 'fix_user_country_permissions_recursion', description: 'Fix user country permissions recursion' },
+  { name: 'create_insert_hazard_function', description: 'Create insert_hazard function for converting GeoJSON to PostGIS geometry (required for hazard uploads)' },
 ]
 
 export default function MigrationsPage() {
