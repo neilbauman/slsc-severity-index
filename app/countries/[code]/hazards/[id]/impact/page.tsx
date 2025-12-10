@@ -283,11 +283,27 @@ export default function HazardImpactPage() {
                         )}
                         {results.metadata.diagnostic.sampleGeometryBounds && (
                           <div className="text-xs text-yellow-700 mb-2">
-                            <p><strong>Sample Hazard Geometry Bounds (first geometry):</strong></p>
+                            <p><strong>Sample Hazard Geometry Bounds (first geometry, type: {results.metadata.diagnostic.firstGeometryType}):</strong></p>
                             <p className="ml-2">
                               Longitude: {results.metadata.diagnostic.sampleGeometryBounds.minX?.toFixed(4)} to {results.metadata.diagnostic.sampleGeometryBounds.maxX?.toFixed(4)}<br/>
                               Latitude: {results.metadata.diagnostic.sampleGeometryBounds.minY?.toFixed(4)} to {results.metadata.diagnostic.sampleGeometryBounds.maxY?.toFixed(4)}
                             </p>
+                            <p className="ml-2 mt-1 text-yellow-600">
+                              {results.metadata.diagnostic.sampleGeometryBounds.minX > rasterBounds.maxX || 
+                               results.metadata.diagnostic.sampleGeometryBounds.maxX < rasterBounds.minX ||
+                               results.metadata.diagnostic.sampleGeometryBounds.minY > rasterBounds.maxY ||
+                               results.metadata.diagnostic.sampleGeometryBounds.maxY < rasterBounds.minY
+                                ? '⚠️ No overlap detected between hazard geometry and raster bounds'
+                                : '✓ Bounds overlap - investigating why no pixels were found...'}
+                            </p>
+                          </div>
+                        )}
+                        {!results.metadata.diagnostic.sampleGeometryBounds && results.metadata.diagnostic.geometryCount > 0 && (
+                          <div className="text-xs text-yellow-700 mb-2">
+                            <p><strong>⚠️ Warning:</strong> Could not calculate bounds for hazard geometries. The geometry coordinates may be in an unexpected format.</p>
+                            {results.metadata.diagnostic.firstGeometryType && (
+                              <p className="ml-2">First geometry type: {results.metadata.diagnostic.firstGeometryType}</p>
+                            )}
                           </div>
                         )}
                         {results.metadata.diagnostic.rasterCRS && (

@@ -276,7 +276,9 @@ export async function POST(
           rasterCRS: rasterMetadata?.crs,
           processingErrors: processingErrors.length > 0 ? processingErrors : 'None',
           geometryCount: hazardGeometries.length,
-          sampleGeometryBounds: geometryDiagnostics.length > 0 ? geometryDiagnostics[0]?.bounds : undefined,
+          sampleGeometryBounds: geometryDiagnostics.length > 0 && geometryDiagnostics[0]?.bounds ? geometryDiagnostics[0].bounds : undefined,
+          firstGeometryType: hazardGeometries.length > 0 ? hazardGeometries[0]?.type : undefined,
+          allGeometryDiagnostics: geometryDiagnostics.slice(0, 5), // First 5 for diagnostics
         } : undefined,
       },
     })
