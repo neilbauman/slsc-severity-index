@@ -288,14 +288,16 @@ export default function HazardImpactPage() {
                               Longitude: {results.metadata.diagnostic.sampleGeometryBounds.minX?.toFixed(4)} to {results.metadata.diagnostic.sampleGeometryBounds.maxX?.toFixed(4)}<br/>
                               Latitude: {results.metadata.diagnostic.sampleGeometryBounds.minY?.toFixed(4)} to {results.metadata.diagnostic.sampleGeometryBounds.maxY?.toFixed(4)}
                             </p>
-                            <p className="ml-2 mt-1 text-yellow-600">
-                              {results.metadata.diagnostic.sampleGeometryBounds.minX > rasterBounds.maxX || 
-                               results.metadata.diagnostic.sampleGeometryBounds.maxX < rasterBounds.minX ||
-                               results.metadata.diagnostic.sampleGeometryBounds.minY > rasterBounds.maxY ||
-                               results.metadata.diagnostic.sampleGeometryBounds.maxY < rasterBounds.minY
-                                ? '⚠️ No overlap detected between hazard geometry and raster bounds'
-                                : '✓ Bounds overlap - investigating why no pixels were found...'}
-                            </p>
+                            {results.metadata.rasterBounds && (
+                              <p className="ml-2 mt-1 text-yellow-600">
+                                {results.metadata.diagnostic.sampleGeometryBounds.minX > results.metadata.rasterBounds.maxX || 
+                                 results.metadata.diagnostic.sampleGeometryBounds.maxX < results.metadata.rasterBounds.minX ||
+                                 results.metadata.diagnostic.sampleGeometryBounds.minY > results.metadata.rasterBounds.maxY ||
+                                 results.metadata.diagnostic.sampleGeometryBounds.maxY < results.metadata.rasterBounds.minY
+                                  ? '⚠️ No overlap detected between hazard geometry and raster bounds'
+                                  : '✓ Bounds overlap - investigating why no pixels were found...'}
+                              </p>
+                            )}
                           </div>
                         )}
                         {!results.metadata.diagnostic.sampleGeometryBounds && results.metadata.diagnostic.geometryCount > 0 && (
