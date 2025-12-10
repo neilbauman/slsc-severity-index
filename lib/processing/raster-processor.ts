@@ -89,20 +89,31 @@ export async function extractPixelsInPolygon(
   const noDataValue = image.getGDALNoData()
   
   // Extract all coordinates from polygon (handle both Polygon and MultiPolygon)
-  const allRings: number[][] = []
+  // GeoJSON Polygon: coordinates is number[][][] where each ring is number[][] (array of [lon, lat] pairs)
+  // GeoJSON MultiPolygon: coordinates is number[][][][] where each polygon has rings
+  // allRings is an array of rings, where each ring is number[][] (array of coordinate pairs)
+  const allRings: number[][][] = []
   if (polygon.type === 'Polygon') {
-    allRings.push(...polygon.coordinates)
+    // Polygon coordinates: number[][][] (array of rings)
+    const polyCoords = polygon.coordinates as number[][][]
+    for (const ring of polyCoords) {
+      allRings.push(ring)
+    }
   } else {
-    // MultiPolygon: flatten all rings
-    for (const poly of polygon.coordinates as number[][][]) {
-      allRings.push(...poly)
+    // MultiPolygon coordinates: number[][][][] (array of polygons, each has rings)
+    const multiCoords = polygon.coordinates as number[][][][]
+    for (const poly of multiCoords) {
+      for (const ring of poly) {
+        allRings.push(ring)
+      }
     }
   }
   
   // Get bounding box of polygon for optimization
   let polyMinX = Infinity, polyMinY = Infinity, polyMaxX = -Infinity, polyMaxY = -Infinity
   for (const ring of allRings) {
-    for (const [lon, lat] of ring) {
+    for (const coord of ring) {
+      const [lon, lat] = coord
       polyMinX = Math.min(polyMinX, lon)
       polyMinY = Math.min(polyMinY, lat)
       polyMaxX = Math.max(polyMaxX, lon)
@@ -130,8 +141,12 @@ export async function extractPixelsInPolygon(
       }
       
       // Check if point is inside polygon (point-in-polygon test)
-      if (isPointInPolygon([x, y], allRings[0])) {
-        pixels.push({ x, y, value: Number(value) })
+      // Use the first (outer) ring for point-in-polygon test
+      if (allRings.length > 0) {
+        const outerRing = allRings[0]
+        if (isPointInPolygon([x, y], outerRing)) {
+          pixels.push({ x, y, value: Number(value) })
+        }
       }
     }
   }
