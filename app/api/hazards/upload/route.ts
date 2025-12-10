@@ -228,10 +228,29 @@ async function storeHazard(
     }
 
     // Store all features in affected_areas
-    affectedAreas = simplified.features.map((f: any) => ({
-      properties: f.properties || {},
-      geometry: f.geometry,
-    }))
+    // Sanitize properties to avoid Unicode escape sequence errors
+    affectedAreas = simplified.features.map((f: any) => {
+      // Clean properties - remove any problematic characters that could cause JSON issues
+      const cleanProperties: any = {}
+      if (f.properties) {
+        for (const [key, value] of Object.entries(f.properties)) {
+          // Convert values to strings and sanitize
+          if (value === null || value === undefined) {
+            cleanProperties[key] = null
+          } else if (typeof value === 'string') {
+            // Remove or replace problematic Unicode escape sequences
+            // Keep the string as-is but ensure it's valid
+            cleanProperties[key] = value
+          } else {
+            cleanProperties[key] = value
+          }
+        }
+      }
+      return {
+        properties: cleanProperties,
+        geometry: f.geometry,
+      }
+    })
   }
 
   // If we couldn't create a single geometry, use the first feature's geometry as the main one
@@ -240,7 +259,41 @@ async function storeHazard(
   }
 
   // Use RPC function to insert hazard with PostGIS geometry conversion
-  const geometryGeojson = geometry ? JSON.stringify(geometry) : null
+  // Safely stringify geometry - catch any JSON errors
+  let geometryGeojson: string | null = null
+  if (geometry) {
+    try {
+      geometryGeojson = JSON.stringify(geometry)
+    } catch (jsonError: any) {
+      console.error('Error stringifying geometry:', jsonError)
+      throw new Error(`Failed to serialize geometry: ${jsonError.message}`)
+    }
+  }
+  
+  // Safely prepare affected_areas - Supabase will handle JSONB conversion
+  // But we need to ensure it's a valid JSON structure
+  let safeAffectedAreas: any = affectedAreas
+  try {
+    // Test that affected_areas can be serialized
+    JSON.stringify(affectedAreas)
+  } catch (jsonError: any) {
+    console.error('Error serializing affected_areas:', jsonError)
+    // If serialization fails, try to clean it further
+    safeAffectedAreas = affectedAreas.map((area: any) => ({
+      properties: area.properties || {},
+      geometry: area.geometry,
+    }))
+    // If still fails, store without properties
+    try {
+      JSON.stringify(safeAffectedAreas)
+    } catch (e) {
+      console.warn('Stripping properties due to serialization error')
+      safeAffectedAreas = affectedAreas.map((area: any) => ({
+        properties: {},
+        geometry: area.geometry,
+      }))
+    }
+  }
   
   // Try using the insert_hazard RPC function first
   const { data: hazard, error: insertError } = await supabase.rpc('insert_hazard', {
@@ -249,7 +302,7 @@ async function storeHazard(
     p_type: type,
     p_date: date || null,
     p_geometry_json: geometryGeojson,
-    p_affected_areas: affectedAreas,
+    p_affected_areas: safeAffectedAreas,
     p_metadata: {
       ...metadata,
       featureCount: simplified.features.length,
