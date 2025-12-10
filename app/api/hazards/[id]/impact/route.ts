@@ -105,11 +105,22 @@ export async function POST(
           hasGeometry: !!area.geometry,
           geometryType: area.geometry?.type,
           hasProperties: !!area.properties,
+          sampleCoordinates: area.geometry?.coordinates ? 
+            (Array.isArray(area.geometry.coordinates) ? 
+              `Array with ${area.geometry.coordinates.length} elements` : 
+              typeof area.geometry.coordinates) : 
+            'none',
         })
         
         if (area.geometry && area.geometry.type) {
           // Validate geometry structure
           if (area.geometry.coordinates) {
+            // Check if this is actually a Point that should be a Polygon
+            // Sometimes shapefiles get converted incorrectly
+            if (area.geometry.type === 'Point' && Array.isArray(area.geometry.coordinates) && area.geometry.coordinates.length === 2) {
+              console.warn(`[API] Warning: Affected area ${i + 1} has Point geometry. This may indicate a shapefile conversion issue. ` +
+                `Expected Polygon or MultiPolygon for flood extents.`)
+            }
             hazardGeometries.push(area.geometry)
           } else {
             console.warn(`[API] Affected area ${i + 1} has geometry type but no coordinates`)
