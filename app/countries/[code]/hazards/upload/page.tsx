@@ -113,7 +113,21 @@ export default function UploadHazardPage() {
         }),
       })
 
-      const createData = await createResponse.json()
+      let createData: any
+      try {
+        const text = await createResponse.text()
+        if (!text) {
+          throw new Error('Empty response from server')
+        }
+        createData = JSON.parse(text)
+      } catch (parseError: any) {
+        // If response is not JSON, it might be an HTML error page or plain text
+        throw new Error(
+          `Server error: Failed to parse response. ` +
+          `This might indicate the file format is invalid or the server encountered an error. ` +
+          `Please check that your shapefile contains .shp and .dbf files.`
+        )
+      }
 
       if (!createResponse.ok) {
         throw new Error(createData.error || 'Failed to upload hazard')
