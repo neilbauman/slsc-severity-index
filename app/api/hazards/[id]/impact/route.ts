@@ -95,18 +95,40 @@ export async function POST(
     const affectedAreas = (hazard.affected_areas as any) || []
     let hazardGeometries: Array<{ type: string; coordinates: any }> = []
 
+    console.log(`[API] Hazard has ${affectedAreas.length} affected areas`)
+
     // Extract geometries from affected_areas (stored as GeoJSON during upload)
     if (affectedAreas.length > 0) {
-      for (const area of affectedAreas) {
+      for (let i = 0; i < affectedAreas.length; i++) {
+        const area = affectedAreas[i]
+        console.log(`[API] Processing affected area ${i + 1}:`, {
+          hasGeometry: !!area.geometry,
+          geometryType: area.geometry?.type,
+          hasProperties: !!area.properties,
+        })
+        
         if (area.geometry && area.geometry.type) {
-          hazardGeometries.push(area.geometry)
+          // Validate geometry structure
+          if (area.geometry.coordinates) {
+            hazardGeometries.push(area.geometry)
+          } else {
+            console.warn(`[API] Affected area ${i + 1} has geometry type but no coordinates`)
+          }
         }
       }
     }
 
+    console.log(`[API] Extracted ${hazardGeometries.length} valid geometries from hazard`)
+
     if (hazardGeometries.length === 0) {
       return NextResponse.json(
-        { error: 'Hazard has no valid geometry in affected_areas. Please ensure the hazard was uploaded with geometry data.' },
+        { 
+          error: 'Hazard has no valid geometry in affected_areas. Please ensure the hazard was uploaded with geometry data.',
+          diagnostic: {
+            affectedAreasCount: affectedAreas.length,
+            sampleArea: affectedAreas[0] || null,
+          },
+        },
         { status: 400 }
       )
     }
