@@ -495,6 +495,37 @@ export default function UploadBaselineDatasetPage() {
                   </div>
                 </div>
 
+                {selectedDatasetType === 'categorical' && previewData && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                    <label className="block text-sm font-medium text-gray-900 mb-2">
+                      Category Columns * (Select columns that contain categories - rows contain the values)
+                    </label>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto">
+                      {previewData.headers.filter(h => h !== pcodeColumn).map((header) => (
+                        <label
+                          key={header}
+                          className={`flex items-center gap-2 p-2 border rounded cursor-pointer ${
+                            categoryColumns.includes(header)
+                              ? 'border-blue-500 bg-blue-100'
+                              : 'border-gray-300 bg-white'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={categoryColumns.includes(header)}
+                            onChange={() => handleCategoryColumnToggle(header)}
+                            className="rounded border-gray-300"
+                          />
+                          <span className="text-xs font-medium">{header}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-600 mt-2">
+                      Selected columns will be treated as categories. Each row represents values for these categories.
+                    </p>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-2">
                     Data Preview ({previewData.totalRows} total rows)
