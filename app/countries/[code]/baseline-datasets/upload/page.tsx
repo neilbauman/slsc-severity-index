@@ -61,13 +61,21 @@ export default function UploadBaselineDatasetPage() {
         const response = await fetch('/api/dataset-types')
         if (response.ok) {
           const data = await response.json()
-          if (data.datasetTypes) {
+          if (data.datasetTypes && data.datasetTypes.length > 0) {
             setDatasetTypes(data.datasetTypes)
             // Don't auto-select - let user choose
+          } else {
+            console.warn('No dataset types returned from API')
+            setError('Dataset types not found. Please run the migration: migrations/create_dataset_types_table.sql')
           }
+        } else {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+          console.error('Failed to fetch dataset types:', errorData)
+          setError(`Failed to load dataset types: ${errorData.error || 'Please run the migration: migrations/create_dataset_types_table.sql'}`)
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to fetch dataset types:', err)
+        setError(`Failed to load dataset types: ${err.message}. Please run the migration: migrations/create_dataset_types_table.sql`)
       }
     }
 
@@ -421,33 +429,41 @@ export default function UploadBaselineDatasetPage() {
                   <label className="block text-sm font-medium text-gray-900 mb-2">
                     Dataset Type *
                   </label>
-                  <div className="flex gap-4">
-                    {datasetTypes.map((type) => (
-                      <label
-                        key={type.id}
-                        className={`flex-1 p-3 border-2 rounded-md cursor-pointer transition ${
-                          datasetTypeId === type.id
-                            ? 'border-blue-500 bg-blue-100'
-                            : 'border-gray-300 bg-white hover:border-gray-400'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="datasetType"
-                          value={type.id}
-                          checked={datasetTypeId === type.id}
-                          onChange={(e) => handleDatasetTypeChange(e.target.value)}
-                          className="sr-only"
-                        />
-                        <div className="font-medium text-sm">{type.name}</div>
-                        <div className="text-xs text-gray-600 mt-1">
-                          {type.data_type === 'categorical'
-                            ? 'Discrete categories (e.g., High/Medium/Low)'
-                            : 'Continuous values (e.g., rates, percentages)'}
-                        </div>
-                      </label>
-                    ))}
-                  </div>
+                  {datasetTypes.length === 0 ? (
+                    <div className="text-sm text-red-600 bg-red-50 p-3 rounded">
+                      Dataset types are not available. Please run the migration to create the dataset_types table:
+                      <code className="block mt-2 text-xs bg-white p-2 rounded">migrations/create_dataset_types_table.sql</code>
+                      <p className="mt-2 text-xs">This will create the "Categorical" and "Numeric" dataset types.</p>
+                    </div>
+                  ) : (
+                    <div className="flex gap-4">
+                      {datasetTypes.map((type) => (
+                        <label
+                          key={type.id}
+                          className={`flex-1 p-3 border-2 rounded-md cursor-pointer transition ${
+                            datasetTypeId === type.id
+                              ? 'border-blue-500 bg-blue-100'
+                              : 'border-gray-300 bg-white hover:border-gray-400'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="datasetType"
+                            value={type.id}
+                            checked={datasetTypeId === type.id}
+                            onChange={(e) => handleDatasetTypeChange(e.target.value)}
+                            className="sr-only"
+                          />
+                          <div className="font-medium text-sm">{type.name}</div>
+                          <div className="text-xs text-gray-600 mt-1">
+                            {type.data_type === 'categorical'
+                              ? 'Discrete categories (e.g., High/Medium/Low)'
+                              : 'Continuous values (e.g., rates, percentages)'}
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
