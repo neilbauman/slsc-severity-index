@@ -76,6 +76,7 @@ export default async function BaselineDatasetsPage({
                     <TableHead>Type</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Uploaded</TableHead>
+                    {user && <TableHead>Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -125,6 +126,20 @@ export default async function BaselineDatasetsPage({
                         <TableCell className="text-xs text-gray-600">
                           {new Date(dataset.uploaded_at).toLocaleDateString()}
                         </TableCell>
+                        {user && (
+                          <TableCell>
+                            <div className="flex gap-2 items-center">
+                              <Link href={`/countries/${code}/baseline-datasets/${dataset.id}`}>
+                                <Button size="sm" variant="outline">View</Button>
+                              </Link>
+                              {dataset.status === 'complete' && (
+                                <Link href={`/countries/${code}/baseline-datasets/${dataset.id}/clean`}>
+                                  <Button size="sm" variant="secondary">Clean</Button>
+                                </Link>
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
                       </TableRow>
                     )
                   })}
