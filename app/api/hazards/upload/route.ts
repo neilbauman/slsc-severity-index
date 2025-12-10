@@ -238,11 +238,29 @@ async function storeHazard(
           if (value === null || value === undefined) {
             cleanProperties[key] = null
           } else if (typeof value === 'string') {
-            // Remove or replace problematic Unicode escape sequences
-            // Keep the string as-is but ensure it's valid
+            // Sanitize string to prevent Unicode escape sequence errors
+            // Fix malformed Unicode escape sequences (e.g., \u followed by invalid hex)
+            let sanitized = value.replace(/\\(?!u[0-9a-fA-F]{4})/g, '\\\\')
+            // Replace any invalid Unicode escape sequences with escaped backslash + u
+            sanitized = sanitized.replace(/\\u([^0-9a-fA-F]|.{1,3})/g, (match) => {
+              // If it's not a valid 4-digit hex sequence, escape it
+              if (!/^\\u[0-9a-fA-F]{4}$/.test(match)) {
+                return match.replace('\\u', '\\\\u')
+              }
+              return match
+            })
+            cleanProperties[key] = sanitized
+          } else if (typeof value === 'number' || typeof value === 'boolean') {
             cleanProperties[key] = value
           } else {
-            cleanProperties[key] = value
+            // For other types, convert to string and sanitize
+            try {
+              const stringValue = String(value)
+              cleanProperties[key] = stringValue.replace(/\\(?!u[0-9a-fA-F]{4})/g, '\\\\')
+            } catch {
+              // If conversion fails, skip this property
+              console.warn(`Skipping property ${key} due to conversion error`)
+            }
           }
         }
       }
