@@ -47,13 +47,19 @@ export async function extractRasterMetadata(fileBuffer: ArrayBuffer): Promise<Ra
     const [minX, minY, maxX, maxY] = image.getBoundingBox()
     const [pixelWidth, pixelHeight] = image.getResolution()
     
-    // Try to read a small sample to get data type
+    // Try to read a small sample to get data type (without window to avoid type issues)
     let dataType = 'Unknown'
     try {
-      const rasters = await image.readRasters({ window: [[0, 1], [0, 1]] })
-      dataType = rasters[0]?.constructor?.name || 'Float32'
+      // Read just a tiny region - use width/height to avoid full read
+      // For now, just assume Float32 or use image sampleFormat if available
+      const sampleFormat = (image as any).sampleFormat
+      if (sampleFormat) {
+        dataType = sampleFormat === 1 ? 'Int16' : sampleFormat === 2 ? 'Int32' : 'Float32'
+      } else {
+        dataType = 'Float32' // Default assumption for population rasters
+      }
     } catch (e) {
-      // Fallback if windowed read fails
+      // Fallback
       dataType = 'Float32'
     }
     
@@ -164,46 +170,14 @@ export async function extractPixelsInPolygon(
     polygonBounds: { minX: polyMinX, minY: polyMinY, maxX: polyMaxX, maxY: polyMaxY },
   })
   
-  // For very large regions, we might need to use windowed reads
-  // But for now, let's try reading the full raster if it's reasonable size
-  const totalPixels = width * height
-  const regionPixels = (endRow - startRow + 1) * (endCol - startCol + 1)
-  
-  // If the raster is huge (>10M pixels) and we only need a small region, use windowed read
-  let regionData: Float32Array | Float64Array | Int16Array | Int32Array
-  let regionWidth: number
-  let regionHeight: number
-  let regionOffsetX: number
-  let regionOffsetY: number
-  
-  if (totalPixels > 10_000_000 && regionPixels < totalPixels * 0.1) {
-    // Use windowed read for efficiency
-    try {
-      const regionRasters = await image.readRasters({
-        window: [[startRow, endRow + 1], [startCol, endCol + 1]],
-      })
-      regionData = regionRasters[0] as Float32Array | Float64Array | Int16Array | Int32Array
-      regionWidth = endCol - startCol + 1
-      regionHeight = endRow - startRow + 1
-      regionOffsetX = startCol
-      regionOffsetY = startRow
-      console.log('Using windowed read for efficiency')
-    } catch (windowError) {
-      console.warn('Windowed read failed, using full raster:', windowError)
-      regionData = data
-      regionWidth = width
-      regionHeight = height
-      regionOffsetX = 0
-      regionOffsetY = 0
-    }
-  } else {
-    // Use full raster data
-    regionData = data
-    regionWidth = width
-    regionHeight = height
-    regionOffsetX = 0
-    regionOffsetY = 0
-  }
+  // For optimization, we calculate the region bounds, but read the full raster
+  // Windowed reads in geotiff.js have a different API format and can be complex
+  // For now, we read the full raster but only process pixels in the relevant region
+  const regionData = data
+  const regionWidth = width
+  const regionHeight = height
+  const regionOffsetX = 0
+  const regionOffsetY = 0
   
   // Iterate through pixels in the region
   let pixelsChecked = 0
