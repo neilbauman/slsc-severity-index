@@ -47,6 +47,12 @@ export async function POST(request: Request) {
       ...(metadata || {}),
     }
 
+    // Check if this is a GeoTIFF/raster file - these don't need CSV-style processing
+    const isRaster = metadata?.fileType === 'raster' || 
+                     metadata?.format === 'geotiff' ||
+                     filePath?.toLowerCase().endsWith('.tif') ||
+                     filePath?.toLowerCase().endsWith('.tiff')
+
     // Create dataset record using service role client (bypasses RLS)
     const { data: dataset, error: datasetError } = await serviceRoleSupabase
       .from('datasets')
@@ -55,7 +61,7 @@ export async function POST(request: Request) {
         name: datasetName,
         file_path: filePath,
         type_id: typeId || null,
-        status: 'processing',
+        status: isRaster ? 'complete' : 'processing', // Raster files are ready immediately
         uploaded_by: user.id,
         metadata: datasetMetadata,
       })

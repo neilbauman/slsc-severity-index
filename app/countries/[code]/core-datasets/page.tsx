@@ -129,18 +129,47 @@ export default async function CoreDatasetsPage({
                       const adminLevel = metadata.adminLevel !== null && metadata.adminLevel !== undefined
                         ? metadata.adminLevel
                         : null
+                      
+                      // Check if this is a raster/GeoTIFF dataset
+                      const isRaster = metadata?.fileType === 'raster' || 
+                                       metadata?.format === 'geotiff' ||
+                                       dataset.file_path?.toLowerCase().endsWith('.tif') ||
+                                       dataset.file_path?.toLowerCase().endsWith('.tiff')
+                      
+                      // Determine type display
+                      const typeDisplay = dataset.dataset_types?.name || 
+                                        (isRaster ? 'GeoTIFF' : '—')
+                      
                       return (
                         <TableRow key={dataset.id}>
                           <TableCell className="font-medium">{dataset.name}</TableCell>
                           <TableCell>
                             {adminLevel !== null ? (
                               <Badge variant="secondary">ADM{adminLevel}</Badge>
+                            ) : isRaster ? (
+                              <span className="text-xs text-gray-400">Raster</span>
                             ) : (
                               <span className="text-xs text-gray-400">—</span>
                             )}
                           </TableCell>
                           <TableCell>
-                            {dataset.dataset_types?.name || '—'}
+                            {isRaster && !dataset.dataset_types?.name ? (
+                              <Badge variant="custom" style={{ backgroundColor: '#9333EA', color: '#fff' }}>
+                                GeoTIFF
+                              </Badge>
+                            ) : dataset.dataset_types?.name ? (
+                              <Badge
+                                variant="custom"
+                                style={{
+                                  backgroundColor: dataset.dataset_types.badge_color || '#gray',
+                                  color: '#fff',
+                                }}
+                              >
+                                {dataset.dataset_types.name}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
                           </TableCell>
                         <TableCell>
                           <Badge
@@ -167,9 +196,14 @@ export default async function CoreDatasetsPage({
                               <Link href={`/countries/${code}/core-datasets/${dataset.id}`}>
                                 <Button size="sm" variant="outline">View</Button>
                               </Link>
-                              {dataset.status === 'complete' && (
+                              {dataset.status === 'complete' && !isRaster && (
                                 <Link href={`/countries/${code}/core-datasets/${dataset.id}/clean`}>
                                   <Button size="sm" variant="secondary">Clean</Button>
+                                </Link>
+                              )}
+                              {isRaster && (
+                                <Link href={`/countries/${code}/hazards`}>
+                                  <Button size="sm" variant="secondary">Use for Hazard Analysis</Button>
                                 </Link>
                               )}
                               <DeleteDatasetButton 
