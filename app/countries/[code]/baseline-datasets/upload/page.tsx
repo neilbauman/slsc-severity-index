@@ -445,6 +445,7 @@ export default function UploadBaselineDatasetPage() {
                               ? 'border-blue-500 bg-blue-100'
                               : 'border-gray-300 bg-white hover:border-gray-400'
                           }`}
+                          onClick={() => handleDatasetTypeChange(type.id)}
                         >
                           <input
                             type="radio"
@@ -453,6 +454,7 @@ export default function UploadBaselineDatasetPage() {
                             checked={datasetTypeId === type.id}
                             onChange={(e) => handleDatasetTypeChange(e.target.value)}
                             className="sr-only"
+                            tabIndex={-1}
                           />
                           <div className="font-medium text-sm">{type.name}</div>
                           <div className="text-xs text-gray-600 mt-1">
