@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       }
     )
 
-    const { countryId, datasetName, filePath, metadata } = await request.json()
+    const { countryId, datasetName, filePath, typeId, metadata } = await request.json()
 
     if (!countryId || !datasetName || !filePath) {
       return NextResponse.json(
@@ -54,6 +54,7 @@ export async function POST(request: Request) {
         country_id: countryId,
         name: datasetName,
         file_path: filePath,
+        type_id: typeId || null,
         status: 'processing',
         uploaded_by: user.id,
         metadata: datasetMetadata,

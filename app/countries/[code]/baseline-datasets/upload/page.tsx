@@ -27,11 +27,13 @@ export default function UploadBaselineDatasetPage() {
   const [adminLevel, setAdminLevel] = useState<number>(0)
   const [availableAdminLevels, setAvailableAdminLevels] = useState<Array<{ level: number; name: string }>>([])
   const [pcodeColumn, setPcodeColumn] = useState<string>('')
+  const [datasetTypeId, setDatasetTypeId] = useState<string>('')
+  const [datasetTypes, setDatasetTypes] = useState<Array<{ id: string; name: string; data_type: string; badge_color: string }>>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<string>('')
 
-  // Fetch country admin levels on mount
+  // Fetch country admin levels and dataset types on mount
   useEffect(() => {
     const fetchAdminLevels = async () => {
       const supabase = createClient()
@@ -51,7 +53,28 @@ export default function UploadBaselineDatasetPage() {
         }
       }
     }
+
+    const fetchDatasetTypes = async () => {
+      try {
+        const response = await fetch('/api/dataset-types')
+        if (response.ok) {
+          const data = await response.json()
+          if (data.datasetTypes) {
+            setDatasetTypes(data.datasetTypes)
+            // Auto-select "Numeric" for baseline datasets (poverty rates, etc. are typically numeric)
+            const numericType = data.datasetTypes.find((t: any) => t.data_type === 'numeric')
+            if (numericType) {
+              setDatasetTypeId(numericType.id)
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch dataset types:', err)
+      }
+    }
+
     fetchAdminLevels()
+    fetchDatasetTypes()
   }, [code])
 
   const loadPreview = async (file: File, filterLevel?: number) => {
@@ -282,6 +305,11 @@ export default function UploadBaselineDatasetPage() {
       return
     }
 
+    if (!datasetTypeId) {
+      setError('Please select a dataset type')
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -308,6 +336,7 @@ export default function UploadBaselineDatasetPage() {
           countryId: country.id,
           datasetName,
           filePath,
+          typeId: datasetTypeId,
           metadata: {
             adminLevel,
             columns: {
@@ -364,6 +393,28 @@ export default function UploadBaselineDatasetPage() {
             <CardContent>
               <form onSubmit={handleConfigure} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Dataset Type *
+                    </label>
+                    <select
+                      value={datasetTypeId}
+                      onChange={(e) => setDatasetTypeId(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                      required
+                    >
+                      <option value="">Select type...</option>
+                      {datasetTypes.map((type) => (
+                        <option key={type.id} value={type.id}>
+                          {type.name} ({type.data_type})
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Categorical: discrete categories. Numeric: continuous values (rates, percentages).
+                    </p>
+                  </div>
+
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">
                       Administrative Level *

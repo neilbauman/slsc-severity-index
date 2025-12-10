@@ -81,6 +81,41 @@ export interface Database {
           created_at?: string
         }
       }
+      dataset_types: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          data_type: 'categorical' | 'numeric'
+          badge_color: string
+          schema_definition: Json | null
+          is_system: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          data_type: 'categorical' | 'numeric'
+          badge_color?: string
+          schema_definition?: Json | null
+          is_system?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          data_type?: 'categorical' | 'numeric'
+          badge_color?: string
+          schema_definition?: Json | null
+          is_system?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
       datasets: {
         Row: {
           id: string
