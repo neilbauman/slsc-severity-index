@@ -261,6 +261,32 @@ export default function HazardImpactPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
+                {results.metadata?.diagnostic && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                    <p className="text-sm font-semibold text-yellow-900 mb-2">⚠️ Diagnostic Information</p>
+                    <p className="text-xs text-yellow-800 mb-2">{results.metadata.diagnostic.warning}</p>
+                    {results.metadata.diagnostic.rasterBounds && (
+                      <div className="text-xs text-yellow-700">
+                        <p><strong>Raster Bounds:</strong> </p>
+                        <p className="ml-2">
+                          Longitude: {results.metadata.diagnostic.rasterBounds.minX.toFixed(4)} to {results.metadata.diagnostic.rasterBounds.maxX.toFixed(4)}<br/>
+                          Latitude: {results.metadata.diagnostic.rasterBounds.minY.toFixed(4)} to {results.metadata.diagnostic.rasterBounds.maxY.toFixed(4)}
+                        </p>
+                      </div>
+                    )}
+                    {results.metadata.processingErrors && results.metadata.processingErrors.length > 0 && (
+                      <div className="text-xs text-red-700 mt-2">
+                        <p><strong>Processing Errors:</strong></p>
+                        <ul className="ml-4 list-disc">
+                          {results.metadata.processingErrors.map((err: string, idx: number) => (
+                            <li key={idx}>{err}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   <div className="bg-blue-50 p-4 rounded-lg">
                     <p className="text-xs text-gray-600 mb-1">Total Affected Population</p>

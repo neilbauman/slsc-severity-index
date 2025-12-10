@@ -115,19 +115,56 @@ export async function POST(
     let totalAffectedPopulation = 0
     let totalAffectedPixels = 0
     const pixelDetails: Array<{ x: number; y: number; value: number }> = []
+    
+    // Get raster metadata first to check bounds
+    const { extractRasterMetadata } = await import('@/lib/processing/raster-processor')
+    let rasterMetadata: any = null
+    try {
+      rasterMetadata = await extractRasterMetadata(fileBuffer)
+      console.log('Raster metadata:', {
+        bounds: rasterMetadata.bounds,
+        width: rasterMetadata.width,
+        height: rasterMetadata.height,
+        pixelWidth: rasterMetadata.pixelWidth,
+        pixelHeight: rasterMetadata.pixelHeight,
+      })
+    } catch (err) {
+      console.error('Failed to extract raster metadata:', err)
+    }
 
     // Process each geometry in the hazard
-    for (const geom of hazardGeometries) {
+    const processingErrors: string[] = []
+    for (let i = 0; i < hazardGeometries.length; i++) {
+      const geom = hazardGeometries[i]
       if (geom.type === 'Polygon' || geom.type === 'MultiPolygon') {
-        const pixels = await extractPixelsInPolygon(fileBuffer, geom as any)
-        
-        totalAffectedPixels += pixels.length
-        totalAffectedPopulation += pixels.reduce((sum, p) => sum + Math.max(0, p.value), 0)
-        
-        if (analysisType === 'granular') {
-          pixelDetails.push(...pixels)
+        try {
+          console.log(`Processing geometry ${i + 1}/${hazardGeometries.length}: ${geom.type}`)
+          const pixels = await extractPixelsInPolygon(fileBuffer, geom as any)
+          console.log(`Found ${pixels.length} pixels for geometry ${i + 1}`)
+          
+          totalAffectedPixels += pixels.length
+          totalAffectedPopulation += pixels.reduce((sum, p) => sum + Math.max(0, p.value), 0)
+          
+          if (analysisType === 'granular') {
+            pixelDetails.push(...pixels)
+          }
+        } catch (err: any) {
+          console.error(`Error processing geometry ${i + 1}:`, err)
+          processingErrors.push(`Geometry ${i + 1}: ${err.message || String(err)}`)
         }
       }
+    }
+    
+    // If no pixels found, include diagnostic info
+    if (totalAffectedPixels === 0) {
+      console.warn('No pixels found. Diagnostic info:', {
+        hazardGeometriesCount: hazardGeometries.length,
+        rasterMetadata: rasterMetadata ? {
+          bounds: rasterMetadata.bounds,
+          crs: rasterMetadata.crs,
+        } : null,
+        processingErrors: processingErrors.length > 0 ? processingErrors : undefined,
+      })
     }
 
     // If zonal statistics exist, also provide admin-level breakdown
@@ -162,6 +199,14 @@ export async function POST(
         rasterDataset: dataset.name,
         geometryCount: hazardGeometries.length,
         calculatedAt: new Date().toISOString(),
+        rasterBounds: rasterMetadata?.bounds,
+        rasterCRS: rasterMetadata?.crs,
+        processingErrors: processingErrors.length > 0 ? processingErrors : undefined,
+        diagnostic: totalAffectedPixels === 0 ? {
+          warning: 'No pixels found. Possible causes: coordinate system mismatch, geometries outside raster bounds, or processing error.',
+          rasterBounds: rasterMetadata?.bounds,
+          processingErrors: processingErrors.length > 0 ? processingErrors : 'None',
+        } : undefined,
       },
     })
 

@@ -40,29 +40,50 @@ export interface PixelValue {
  * Extract metadata from a GeoTIFF file
  */
 export async function extractRasterMetadata(fileBuffer: ArrayBuffer): Promise<RasterMetadata> {
-  const tiff = await fromArrayBuffer(fileBuffer)
-  const image = await tiff.getImage()
-  
-  const [minX, minY, maxX, maxY] = image.getBoundingBox()
-  const [pixelWidth, pixelHeight] = image.getResolution()
-  
-  const rasters = await image.readRasters()
-  const dataType = rasters[0]?.constructor?.name || 'Float32'
-  
-  return {
-    width: image.getWidth(),
-    height: image.getHeight(),
-    pixelWidth: Math.abs(pixelWidth),
-    pixelHeight: Math.abs(pixelHeight),
-    bounds: {
-      minX,
-      minY,
-      maxX,
-      maxY,
-    },
-    crs: image.geoKeys?.ProjectedCSTypeGeoKey?.toString() || image.geoKeys?.GeographicTypeGeoKey?.toString() || null,
-    noDataValue: image.getGDALNoData() || null,
-    dataType,
+  try {
+    const tiff = await fromArrayBuffer(fileBuffer)
+    const image = await tiff.getImage()
+    
+    const [minX, minY, maxX, maxY] = image.getBoundingBox()
+    const [pixelWidth, pixelHeight] = image.getResolution()
+    
+    // Try to read a small sample to get data type
+    let dataType = 'Unknown'
+    try {
+      const rasters = await image.readRasters({ window: [[0, 1], [0, 1]] })
+      dataType = rasters[0]?.constructor?.name || 'Float32'
+    } catch (e) {
+      // Fallback if windowed read fails
+      dataType = 'Float32'
+    }
+    
+    // Get CRS info - can be in various formats
+    let crs: string | null = null
+    if (image.geoKeys) {
+      crs = image.geoKeys.ProjectedCSTypeGeoKey?.toString() || 
+            image.geoKeys.GeographicTypeGeoKey?.toString() ||
+            image.geoKeys.GTModelTypeGeoKey?.toString() ||
+            null
+    }
+    
+    return {
+      width: image.getWidth(),
+      height: image.getHeight(),
+      pixelWidth: Math.abs(pixelWidth),
+      pixelHeight: Math.abs(pixelHeight),
+      bounds: {
+        minX,
+        minY,
+        maxX,
+        maxY,
+      },
+      crs,
+      noDataValue: image.getGDALNoData() || null,
+      dataType,
+    }
+  } catch (error: any) {
+    console.error('Error extracting raster metadata:', error)
+    throw new Error(`Failed to read GeoTIFF: ${error.message || String(error)}`)
   }
 }
 
@@ -121,9 +142,22 @@ export async function extractPixelsInPolygon(
     }
   }
   
+  // Check if polygon bounds overlap with raster bounds at all
+  if (polyMaxX < minX || polyMinX > maxX || polyMaxY < minY || polyMinY > maxY) {
+    console.warn('Polygon bounds do not overlap with raster bounds:', {
+      polygon: { minX: polyMinX, minY: polyMinY, maxX: polyMaxX, maxY: polyMaxY },
+      raster: { minX, minY, maxX, maxY },
+    })
+    return [] // No overlap
+  }
+  
   // Iterate through pixels that intersect with polygon bounds
+  let pixelsChecked = 0
+  let pixelsInBounds = 0
   for (let row = 0; row < height; row++) {
     for (let col = 0; col < width; col++) {
+      pixelsChecked++
+      
       // Calculate pixel center coordinates
       const x = minX + (col + 0.5) * pixelWidth
       const y = maxY - (row + 0.5) * pixelHeight // Y is top-down in rasters
@@ -133,10 +167,12 @@ export async function extractPixelsInPolygon(
         continue
       }
       
+      pixelsInBounds++
+      
       const value = data[row * width + col]
       
       // Skip no-data values
-      if (noDataValue !== null && value === noDataValue) {
+      if (noDataValue !== null && (isNaN(value as any) || value === noDataValue)) {
         continue
       }
       
@@ -149,6 +185,18 @@ export async function extractPixelsInPolygon(
         }
       }
     }
+  }
+  
+  // Log diagnostic info if no pixels found
+  if (pixels.length === 0) {
+    console.warn('No pixels found in polygon:', {
+      polygonBounds: { minX: polyMinX, minY: polyMinY, maxX: polyMaxX, maxY: polyMaxY },
+      rasterBounds: { minX, minY, maxX, maxY },
+      pixelsChecked,
+      pixelsInBounds,
+      ringsCount: allRings.length,
+      outerRingLength: allRings[0]?.length,
+    })
   }
   
   return pixels
