@@ -49,7 +49,9 @@ export default async function BaselineDatasetsPage({
               Baseline Datasets
             </h1>
             {user && (
-              <Button size="sm">Upload Dataset</Button>
+              <Link href={`/countries/${code}/baseline-datasets/upload`}>
+                <Button size="sm">Upload Dataset</Button>
+              </Link>
             )}
           </div>
         </div>
@@ -120,7 +122,9 @@ export default async function BaselineDatasetsPage({
                   No baseline datasets uploaded yet
                 </p>
                 {user && (
-                  <Button size="sm">Upload Baseline Dataset</Button>
+                  <Link href={`/countries/${code}/baseline-datasets/upload`}>
+                    <Button size="sm">Upload Baseline Dataset</Button>
+                  </Link>
                 )}
               </div>
             )}
