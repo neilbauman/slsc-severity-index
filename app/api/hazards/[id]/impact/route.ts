@@ -169,21 +169,60 @@ export async function POST(
             // Get bounding box of this geometry for diagnostics
             let geomBounds: any = null
             if (geom.coordinates) {
-              const coords = geom.type === 'Polygon' 
-                ? (geom.coordinates as number[][][])
-                : (geom.coordinates as number[][][][]).flat(2)
-              const allCoords = coords.flat()
-              if (allCoords.length > 0) {
-                const lons = allCoords.map((c: any) => c[0]).filter((x: any) => typeof x === 'number')
-                const lats = allCoords.map((c: any) => c[1]).filter((x: any) => typeof x === 'number')
-                if (lons.length > 0 && lats.length > 0) {
-                  geomBounds = {
-                    minX: Math.min(...lons),
-                    maxX: Math.max(...lons),
-                    minY: Math.min(...lats),
-                    maxY: Math.max(...lats),
+              try {
+                let allCoords: number[][] = []
+                
+                if (geom.type === 'Polygon') {
+                  // Polygon: coordinates is number[][][] (array of rings)
+                  const polyCoords = geom.coordinates as number[][][]
+                  for (const ring of polyCoords) {
+                    allCoords.push(...ring)
+                  }
+                } else if (geom.type === 'MultiPolygon') {
+                  // MultiPolygon: coordinates is number[][][][] (array of polygons, each has rings)
+                  const multiCoords = geom.coordinates as number[][][][]
+                  for (const poly of multiCoords) {
+                    for (const ring of poly) {
+                      allCoords.push(...ring)
+                    }
                   }
                 }
+                
+                if (allCoords.length > 0) {
+                  const lons = allCoords.map((c) => {
+                    if (Array.isArray(c) && c.length >= 2) {
+                      return typeof c[0] === 'number' ? c[0] : null
+                    }
+                    return null
+                  }).filter((x): x is number => x !== null)
+                  
+                  const lats = allCoords.map((c) => {
+                    if (Array.isArray(c) && c.length >= 2) {
+                      return typeof c[1] === 'number' ? c[1] : null
+                    }
+                    return null
+                  }).filter((x): x is number => x !== null)
+                  
+                  if (lons.length > 0 && lats.length > 0) {
+                    geomBounds = {
+                      minX: Math.min(...lons),
+                      maxX: Math.max(...lons),
+                      minY: Math.min(...lats),
+                      maxY: Math.max(...lats),
+                    }
+                    console.log(`[API] Calculated bounds for geometry ${i + 1}:`, geomBounds)
+                  } else {
+                    console.warn(`[API] Could not extract valid coordinates from geometry ${i + 1}. Sample coord:`, allCoords[0])
+                  }
+                }
+              } catch (boundsError: any) {
+                console.error(`[API] Error calculating bounds for geometry ${i + 1}:`, boundsError)
+                console.log(`[API] Geometry ${i + 1} structure:`, {
+                  type: geom.type,
+                  hasCoordinates: !!geom.coordinates,
+                  coordinatesType: Array.isArray(geom.coordinates) ? 'array' : typeof geom.coordinates,
+                  coordinatesLength: Array.isArray(geom.coordinates) ? geom.coordinates.length : 'N/A',
+                })
               }
             }
             
