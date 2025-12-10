@@ -72,48 +72,62 @@ export default async function BaselineDatasetsPage({
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
+                    <TableHead>Admin Level</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Uploaded</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {datasets.map((dataset: any) => (
-                    <TableRow key={dataset.id}>
-                      <TableCell className="font-medium">{dataset.name}</TableCell>
-                      <TableCell>
-                        {dataset.dataset_types?.name ? (
+                  {datasets.map((dataset: any) => {
+                    const metadata = (dataset.metadata as any) || {}
+                    const adminLevel = metadata.adminLevel !== null && metadata.adminLevel !== undefined
+                      ? metadata.adminLevel
+                      : null
+                    return (
+                      <TableRow key={dataset.id}>
+                        <TableCell className="font-medium">{dataset.name}</TableCell>
+                        <TableCell>
+                          {adminLevel !== null ? (
+                            <Badge variant="secondary">ADM{adminLevel}</Badge>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {dataset.dataset_types?.name ? (
+                            <Badge
+                              variant="custom"
+                              style={{
+                                backgroundColor: dataset.dataset_types.badge_color || '#gray',
+                                color: '#fff',
+                              }}
+                            >
+                              {dataset.dataset_types.name}
+                            </Badge>
+                          ) : (
+                            '—'
+                          )}
+                        </TableCell>
+                        <TableCell>
                           <Badge
-                            variant="custom"
-                            style={{
-                              backgroundColor: dataset.dataset_types.badge_color || '#gray',
-                              color: '#fff',
-                            }}
+                            variant={
+                              dataset.status === 'complete'
+                                ? 'status-success'
+                                : dataset.status === 'error'
+                                ? 'status-error'
+                                : 'status-info'
+                            }
                           >
-                            {dataset.dataset_types.name}
+                            {dataset.status}
                           </Badge>
-                        ) : (
-                          '—'
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            dataset.status === 'complete'
-                              ? 'status-success'
-                              : dataset.status === 'error'
-                              ? 'status-error'
-                              : 'status-info'
-                          }
-                        >
-                          {dataset.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-gray-600">
-                        {new Date(dataset.uploaded_at).toLocaleDateString()}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                        <TableCell className="text-xs text-gray-600">
+                          {new Date(dataset.uploaded_at).toLocaleDateString()}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             ) : (

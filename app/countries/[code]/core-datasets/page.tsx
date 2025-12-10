@@ -115,6 +115,7 @@ export default async function CoreDatasetsPage({
                   <TableHeader>
                     <TableRow>
                       <TableHead>Name</TableHead>
+                      <TableHead>Admin Level</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Version</TableHead>
@@ -123,12 +124,24 @@ export default async function CoreDatasetsPage({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {uniqueDatasets.map((dataset: any) => (
-                      <TableRow key={dataset.id}>
-                        <TableCell className="font-medium">{dataset.name}</TableCell>
-                        <TableCell>
-                          {dataset.dataset_types?.name || '—'}
-                        </TableCell>
+                    {uniqueDatasets.map((dataset: any) => {
+                      const metadata = (dataset.metadata as any) || {}
+                      const adminLevel = metadata.adminLevel !== null && metadata.adminLevel !== undefined
+                        ? metadata.adminLevel
+                        : null
+                      return (
+                        <TableRow key={dataset.id}>
+                          <TableCell className="font-medium">{dataset.name}</TableCell>
+                          <TableCell>
+                            {adminLevel !== null ? (
+                              <Badge variant="secondary">ADM{adminLevel}</Badge>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {dataset.dataset_types?.name || '—'}
+                          </TableCell>
                         <TableCell>
                           <Badge
                             variant={
@@ -167,7 +180,8 @@ export default async function CoreDatasetsPage({
                           )}
                         </TableCell>
                       </TableRow>
-                    ))}
+                      )
+                    })}
                   </TableBody>
                 </Table>
               ) : (

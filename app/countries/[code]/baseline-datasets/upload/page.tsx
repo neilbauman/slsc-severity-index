@@ -28,7 +28,9 @@ export default function UploadBaselineDatasetPage() {
   const [availableAdminLevels, setAvailableAdminLevels] = useState<Array<{ level: number; name: string }>>([])
   const [pcodeColumn, setPcodeColumn] = useState<string>('')
   const [datasetTypeId, setDatasetTypeId] = useState<string>('')
+  const [selectedDatasetType, setSelectedDatasetType] = useState<'categorical' | 'numeric' | null>(null)
   const [datasetTypes, setDatasetTypes] = useState<Array<{ id: string; name: string; data_type: string; badge_color: string }>>([])
+  const [categoryColumns, setCategoryColumns] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<string>('')
@@ -61,11 +63,7 @@ export default function UploadBaselineDatasetPage() {
           const data = await response.json()
           if (data.datasetTypes) {
             setDatasetTypes(data.datasetTypes)
-            // Auto-select "Numeric" for baseline datasets (poverty rates, etc. are typically numeric)
-            const numericType = data.datasetTypes.find((t: any) => t.data_type === 'numeric')
-            if (numericType) {
-              setDatasetTypeId(numericType.id)
-            }
+            // Don't auto-select - let user choose
           }
         }
       } catch (err) {
@@ -295,6 +293,28 @@ export default function UploadBaselineDatasetPage() {
     }
   }
 
+  const handleDatasetTypeChange = (typeId: string) => {
+    setDatasetTypeId(typeId)
+    const type = datasetTypes.find(t => t.id === typeId)
+    if (type) {
+      setSelectedDatasetType(type.data_type as 'categorical' | 'numeric')
+      // Clear category columns if switching to numeric
+      if (type.data_type === 'numeric') {
+        setCategoryColumns([])
+      }
+    }
+  }
+
+  const handleCategoryColumnToggle = (column: string) => {
+    setCategoryColumns(prev => {
+      if (prev.includes(column)) {
+        return prev.filter(c => c !== column)
+      } else {
+        return [...prev, column]
+      }
+    })
+  }
+
   const handleConfigure = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -307,6 +327,11 @@ export default function UploadBaselineDatasetPage() {
 
     if (!datasetTypeId) {
       setError('Please select a dataset type')
+      return
+    }
+
+    if (selectedDatasetType === 'categorical' && categoryColumns.length === 0) {
+      setError('For categorical datasets, please select at least one category column')
       return
     }
 
@@ -341,7 +366,7 @@ export default function UploadBaselineDatasetPage() {
             adminLevel,
             columns: {
               pcode: pcodeColumn,
-              // No population column for baseline datasets
+              categoryColumns: selectedDatasetType === 'categorical' ? categoryColumns : undefined,
             },
           },
         }),
@@ -392,29 +417,40 @@ export default function UploadBaselineDatasetPage() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleConfigure} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      Dataset Type *
-                    </label>
-                    <select
-                      value={datasetTypeId}
-                      onChange={(e) => setDatasetTypeId(e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
-                      required
-                    >
-                      <option value="">Select type...</option>
-                      {datasetTypes.map((type) => (
-                        <option key={type.id} value={type.id}>
-                          {type.name} ({type.data_type})
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Categorical: discrete categories. Numeric: continuous values (rates, percentages).
-                    </p>
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                  <label className="block text-sm font-medium text-gray-900 mb-2">
+                    Dataset Type *
+                  </label>
+                  <div className="flex gap-4">
+                    {datasetTypes.map((type) => (
+                      <label
+                        key={type.id}
+                        className={`flex-1 p-3 border-2 rounded-md cursor-pointer transition ${
+                          datasetTypeId === type.id
+                            ? 'border-blue-500 bg-blue-100'
+                            : 'border-gray-300 bg-white hover:border-gray-400'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="datasetType"
+                          value={type.id}
+                          checked={datasetTypeId === type.id}
+                          onChange={(e) => handleDatasetTypeChange(e.target.value)}
+                          className="sr-only"
+                        />
+                        <div className="font-medium text-sm">{type.name}</div>
+                        <div className="text-xs text-gray-600 mt-1">
+                          {type.data_type === 'categorical'
+                            ? 'Discrete categories (e.g., High/Medium/Low)'
+                            : 'Continuous values (e.g., rates, percentages)'}
+                        </div>
+                      </label>
+                    ))}
                   </div>
+                </div>
 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">
                       Administrative Level *
@@ -473,6 +509,8 @@ export default function UploadBaselineDatasetPage() {
                               className={`px-2 py-2 text-left font-medium text-gray-700 ${
                                 header === pcodeColumn
                                   ? 'bg-blue-100'
+                                  : categoryColumns.includes(header)
+                                  ? 'bg-yellow-100'
                                   : ''
                               }`}
                             >
@@ -493,6 +531,8 @@ export default function UploadBaselineDatasetPage() {
                                 className={`px-2 py-1 ${
                                   header === pcodeColumn
                                     ? 'bg-blue-50'
+                                    : categoryColumns.includes(header)
+                                    ? 'bg-yellow-50'
                                     : ''
                                 }`}
                               >
