@@ -213,10 +213,32 @@ export async function extractPixelsInPolygon(
       }
       
       // Check if point is inside polygon (point-in-polygon test)
-      // Use the first (outer) ring for point-in-polygon test
-      if (allRings.length > 0) {
-        const outerRing = allRings[0]
-        if (isPointInPolygon([x, y], outerRing)) {
+      // For Polygon: first ring is outer, subsequent are holes
+      // For MultiPolygon: need to check each polygon separately
+      if (polygon.type === 'Polygon') {
+        const rings = polygon.coordinates as number[][][]
+        if (rings.length > 0) {
+          const outerRing = rings[0]
+          const holes = rings.slice(1)
+          if (isPointInPolygon([x, y], outerRing, holes)) {
+            pixels.push({ x, y, value: Number(value) })
+          }
+        }
+      } else if (polygon.type === 'MultiPolygon') {
+        // For MultiPolygon, check if point is in any of the polygons
+        const multiCoords = polygon.coordinates as number[][][][]
+        let isInside = false
+        for (const poly of multiCoords) {
+          if (poly.length > 0) {
+            const outerRing = poly[0]
+            const holes = poly.slice(1)
+            if (isPointInPolygon([x, y], outerRing, holes)) {
+              isInside = true
+              break // Point is inside this polygon, no need to check others
+            }
+          }
+        }
+        if (isInside) {
           pixels.push({ x, y, value: Number(value) })
         }
       }
@@ -240,20 +262,47 @@ export async function extractPixelsInPolygon(
 
 /**
  * Point-in-polygon test using ray casting algorithm
+ * @param point The point to test [lon, lat]
+ * @param outerRing The outer ring of the polygon
+ * @param holes Optional array of hole rings (for Polygon with interior rings)
  */
-function isPointInPolygon(point: [number, number], ring: number[][]): boolean {
+function isPointInPolygon(
+  point: [number, number],
+  outerRing: number[][],
+  holes: number[][][] = []
+): boolean {
   const [x, y] = point
-  let inside = false
   
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i]
-    const [xj, yj] = ring[j]
+  // First check if point is in outer ring
+  let inside = false
+  for (let i = 0, j = outerRing.length - 1; i < outerRing.length; j = i++) {
+    const [xi, yi] = outerRing[i]
+    const [xj, yj] = outerRing[j]
     
     const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)
     if (intersect) inside = !inside
   }
   
-  return inside
+  if (!inside) {
+    return false // Not in outer ring
+  }
+  
+  // If inside outer ring, check if point is in any hole (if so, exclude it)
+  for (const hole of holes) {
+    let inHole = false
+    for (let i = 0, j = hole.length - 1; i < hole.length; j = i++) {
+      const [xi, yi] = hole[i]
+      const [xj, yj] = hole[j]
+      
+      const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)
+      if (intersect) inHole = !inHole
+    }
+    if (inHole) {
+      return false // Point is in a hole, so it's outside the polygon
+    }
+  }
+  
+  return true // In outer ring and not in any holes
 }
 
 /**
