@@ -247,14 +247,65 @@ export async function extractPixelsInPolygon(
   
   // Log diagnostic info if no pixels found
   if (pixels.length === 0) {
-    console.warn('No pixels found in polygon:', {
+    // Sample a few points to see what's happening
+    const samplePoints: any[] = []
+    const sampleCount = Math.min(10, pixelsChecked)
+    let sampleIndex = 0
+    for (let row = startRow; row <= endRow && sampleIndex < sampleCount; row++) {
+      for (let col = startCol; col <= endCol && sampleIndex < sampleCount; col++) {
+        const x = minX + (col + 0.5) * pixelWidth
+        const y = maxY - (row + 0.5) * pixelHeight
+        const dataRow = row - regionOffsetY
+        const dataCol = col - regionOffsetX
+        const value = regionData[dataRow * regionWidth + dataCol]
+        const inOuterBounds = !(x < polyMinX || x > polyMaxX || y < polyMinY || y > polyMaxY)
+        
+        // Test point-in-polygon for sample
+        let pointInPolygon = false
+        if (polygon.type === 'Polygon') {
+          const rings = polygon.coordinates as number[][][]
+          if (rings.length > 0) {
+            pointInPolygon = isPointInPolygon([x, y], rings[0], rings.slice(1))
+          }
+        } else if (polygon.type === 'MultiPolygon') {
+          const multiCoords = polygon.coordinates as number[][][][]
+          for (const poly of multiCoords) {
+            if (poly.length > 0 && isPointInPolygon([x, y], poly[0], poly.slice(1))) {
+              pointInPolygon = true
+              break
+            }
+          }
+        }
+        
+        samplePoints.push({
+          row,
+          col,
+          x: x.toFixed(4),
+          y: y.toFixed(4),
+          value,
+          isNoData: noDataValue !== null && value === noDataValue,
+          isNegative: value < 0,
+          inBounds: inOuterBounds,
+          pointInPolygon,
+        })
+        sampleIndex++
+      }
+    }
+    
+    console.warn('No pixels found in polygon. Diagnostic info:', {
       polygonBounds: { minX: polyMinX, minY: polyMinY, maxX: polyMaxX, maxY: polyMaxY },
       rasterBounds: { minX, minY, maxX, maxY },
+      pixelResolution: { pixelWidth, pixelHeight },
+      region: { startRow, endRow, startCol, endCol },
       pixelsChecked,
       pixelsInBounds,
       ringsCount: allRings.length,
       outerRingLength: allRings[0]?.length,
+      noDataValue,
+      samplePoints,
     })
+  } else {
+    console.log(`Found ${pixels.length} pixels in polygon`)
   }
   
   return pixels
