@@ -289,27 +289,32 @@ async function storeHazard(
   }
   
   // Safely prepare affected_areas - Supabase will handle JSONB conversion
-  // But we need to ensure it's a valid JSON structure
+  // But we need to ensure it's a valid JSON structure that PostgreSQL can parse
   let safeAffectedAreas: any = affectedAreas
+  
+  // Double-check serialization - PostgreSQL is strict about JSONB format
   try {
-    // Test that affected_areas can be serialized
-    JSON.stringify(affectedAreas)
+    const testString = JSON.stringify(affectedAreas)
+    // Try to parse it back to ensure it's valid
+    JSON.parse(testString)
   } catch (jsonError: any) {
-    console.error('Error serializing affected_areas:', jsonError)
-    // If serialization fails, try to clean it further
+    console.error('Error validating affected_areas JSON:', jsonError)
+    // If serialization fails, strip properties entirely to ensure geometry is saved
+    console.warn('Stripping all properties to avoid Unicode escape sequence errors')
     safeAffectedAreas = affectedAreas.map((area: any) => ({
-      properties: area.properties || {},
+      properties: {},
       geometry: area.geometry,
     }))
-    // If still fails, store without properties
+    
+    // Verify the stripped version is valid
     try {
       JSON.stringify(safeAffectedAreas)
-    } catch (e) {
-      console.warn('Stripping properties due to serialization error')
-      safeAffectedAreas = affectedAreas.map((area: any) => ({
-        properties: {},
-        geometry: area.geometry,
-      }))
+    } catch (finalError: any) {
+      console.error('Even stripped version failed validation:', finalError)
+      throw new Error(
+        'Failed to serialize hazard data. The geometry data may contain invalid characters. ' +
+        `Original error: ${jsonError.message || String(jsonError)}`
+      )
     }
   }
   
@@ -370,6 +375,41 @@ async function storeHazard(
   
   if (insertError) {
     console.error('Hazard insert error:', insertError)
+    
+    // Check if it's a Unicode escape sequence error - try storing without properties
+    if (insertError.message && insertError.message.includes('Unicode escape sequence')) {
+      console.warn('Retrying insert without properties due to Unicode error')
+      const strippedAffectedAreas = affectedAreas.map((area: any) => ({
+        properties: {},
+        geometry: area.geometry,
+      }))
+      
+      const { data: retryHazard, error: retryError } = await supabase.rpc('insert_hazard', {
+        p_country_id: countryId,
+        p_name: name,
+        p_type: type,
+        p_date: date || null,
+        p_geometry_json: geometryGeojson,
+        p_affected_areas: strippedAffectedAreas,
+        p_metadata: {
+          ...metadata,
+          featureCount: simplified.features.length,
+          geometryTypes: [...new Set(simplified.features.map((f: any) => f.geometry?.type))],
+          propertiesStripped: true, // Flag to indicate properties were removed
+        },
+        p_uploaded_by: userId,
+      })
+      
+      if (retryError) {
+        throw new Error(
+          `Failed to store hazard even after removing properties: ${retryError.message}. ` +
+          `Original error: ${insertError.message}`
+        )
+      }
+      
+      return retryHazard?.[0] || retryHazard
+    }
+    
     throw new Error(`Failed to store hazard: ${insertError.message}`)
   }
 
