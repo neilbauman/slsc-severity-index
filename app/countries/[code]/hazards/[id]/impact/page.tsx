@@ -168,6 +168,120 @@ export default function HazardImpactPage() {
           </CardContent>
         </Card>
 
+        {/* Area Impact Analysis */}
+        <Card className="mb-6 border-green-200 bg-green-50">
+          <CardHeader>
+            <CardTitle>Area Impact Analysis</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <p className="text-xs text-gray-700">
+                Calculate the percentage of each administrative area that is affected by this hazard. 
+                This uses PostGIS spatial overlay and is fast and accurate.
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Admin Level
+                </label>
+                <select
+                  id="areaAdminLevel"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                  defaultValue=""
+                >
+                  <option value="">All Levels</option>
+                  <option value="0">ADM0 (Country)</option>
+                  <option value="1">ADM1 (Province/State)</option>
+                  <option value="2">ADM2 (District)</option>
+                  <option value="3">ADM3 (Sub-district)</option>
+                  <option value="4">ADM4 (Village/Ward)</option>
+                </select>
+              </div>
+              <Button
+                id="calculateAreaImpact"
+                variant="secondary"
+                className="w-full"
+                onClick={async () => {
+                  const select = document.getElementById('areaAdminLevel') as HTMLSelectElement
+                  const adminLevel = select.value ? parseInt(select.value) : null
+                  
+                  const btn = document.getElementById('calculateAreaImpact') as HTMLButtonElement
+                  btn.disabled = true
+                  btn.textContent = 'Calculating...'
+                  
+                  try {
+                    const response = await fetch(`/api/hazards/${hazardId}/area-impact`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ adminLevel }),
+                    })
+                    
+                    const data = await response.json()
+                    
+                    if (!response.ok) {
+                      if (data.requiresMigration) {
+                        alert(`Please run the migration "${data.migrationName}" first. Go to Admin > Migrations to run it.`)
+                      } else {
+                        alert(`Error: ${data.error}`)
+                      }
+                      return
+                    }
+                    
+                    // Display results in a new card below
+                    const resultsDiv = document.getElementById('areaImpactResults')
+                    if (resultsDiv) {
+                      resultsDiv.innerHTML = `
+                        <div class="mt-4">
+                          <h3 class="font-semibold text-sm mb-3">Area Impact Results</h3>
+                          <div class="overflow-x-auto">
+                            <table class="min-w-full text-xs border">
+                              <thead class="bg-gray-100">
+                                <tr>
+                                  <th class="px-3 py-2 text-left border">Admin Area</th>
+                                  <th class="px-3 py-2 text-left border">Pcode</th>
+                                  <th class="px-3 py-2 text-left border">Level</th>
+                                  <th class="px-3 py-2 text-right border">Total Area (km²)</th>
+                                  <th class="px-3 py-2 text-right border">Affected Area (km²)</th>
+                                  <th class="px-3 py-2 text-right border">% Affected</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                ${data.results.map((r: any) => `
+                                  <tr>
+                                    <td class="px-3 py-2 border">${r.admin_name || '—'}</td>
+                                    <td class="px-3 py-2 border">${r.pcode || '—'}</td>
+                                    <td class="px-3 py-2 border">ADM${r.admin_level}</td>
+                                    <td class="px-3 py-2 text-right border">${r.total_area_km2?.toFixed(2) || '—'}</td>
+                                    <td class="px-3 py-2 text-right border">${r.affected_area_km2?.toFixed(2) || '0.00'}</td>
+                                    <td class="px-3 py-2 text-right border font-semibold ${r.affected_percentage > 50 ? 'text-red-600' : r.affected_percentage > 20 ? 'text-orange-600' : 'text-gray-600'}">
+                                      ${r.affected_percentage?.toFixed(2) || '0.00'}%
+                                    </td>
+                                  </tr>
+                                `).join('')}
+                              </tbody>
+                            </table>
+                          </div>
+                          <p class="text-xs text-gray-600 mt-2">
+                            Found ${data.results.length} admin areas with hazard overlap at ${data.adminLevel === 'all' ? 'all levels' : `ADM${data.adminLevel}`}
+                          </p>
+                        </div>
+                      `
+                      resultsDiv.style.display = 'block'
+                    }
+                  } catch (err: any) {
+                    alert(`Error: ${err.message}`)
+                  } finally {
+                    btn.disabled = false
+                    btn.textContent = 'Calculate Area Impact'
+                  }
+                }}
+              >
+                Calculate Area Impact
+              </Button>
+              <div id="areaImpactResults" className="hidden"></div>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>Population Impact Analysis</CardTitle>

@@ -15,6 +15,7 @@ const MIGRATIONS = [
   { name: 'alter_admin_boundaries_geometry_column', description: 'Allow MultiPolygon geometries in admin_boundaries table' },
   { name: 'fix_user_country_permissions_recursion', description: 'Fix user country permissions recursion' },
   { name: 'create_insert_hazard_function', description: 'Create insert_hazard function for converting GeoJSON to PostGIS geometry (required for hazard uploads)' },
+  { name: 'create_hazard_area_impact_function', description: 'Create calculate_hazard_area_impact function to calculate percentage of admin areas affected by hazards' },
 ]
 
 export default function MigrationsPage() {
